@@ -6,16 +6,17 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const revalidate = 0;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_demo_key', {
-  apiVersion: '2025-08-27.basil',
-});
-
-// Add your webhook secret from Stripe Dashboard
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_secret';
-
 export async function POST(request: NextRequest) {
   const body = await request.text();
   const sig = request.headers.get('stripe-signature');
+
+  // Get runtime environment variables - only access at runtime to prevent bundling
+  const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_demo_key';
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_secret';
+
+  const stripe = new Stripe(STRIPE_SECRET_KEY, {
+    apiVersion: '2025-08-27.basil',
+  });
 
   let event: Stripe.Event;
 
@@ -38,27 +39,27 @@ export async function POST(request: NextRequest) {
     // Handle the event
     switch (event.type) {
       case 'customer.subscription.created':
-        await handleSubscriptionCreated(event.data.object as Stripe.Subscription);
+        await handleSubscriptionCreated(event.data.object as Stripe.Subscription, stripe);
         break;
 
       case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription, stripe);
         break;
 
       case 'customer.subscription.deleted':
-        await handleSubscriptionCanceled(event.data.object as Stripe.Subscription);
+        await handleSubscriptionCanceled(event.data.object as Stripe.Subscription, stripe);
         break;
 
       case 'invoice.payment_succeeded':
-        await handlePaymentSucceeded(event.data.object as Stripe.Invoice);
+        await handlePaymentSucceeded(event.data.object as Stripe.Invoice, stripe);
         break;
 
       case 'invoice.payment_failed':
-        await handlePaymentFailed(event.data.object as Stripe.Invoice);
+        await handlePaymentFailed(event.data.object as Stripe.Invoice, stripe);
         break;
 
       case 'customer.subscription.trial_will_end':
-        await handleTrialWillEnd(event.data.object as Stripe.Subscription);
+        await handleTrialWillEnd(event.data.object as Stripe.Subscription, stripe);
         break;
 
       default:
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
+async function handleSubscriptionCreated(subscription: Stripe.Subscription, stripe: Stripe) {
   console.log('🎉 New subscription created:', subscription.id);
 
   const customerId = subscription.customer as string;
@@ -113,7 +114,7 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
   }
 }
 
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription, stripe: Stripe) {
   console.log('🔄 Subscription updated:', subscription.id);
 
   const customerId = subscription.customer as string;
@@ -136,7 +137,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   }
 }
 
-async function handleSubscriptionCanceled(subscription: Stripe.Subscription) {
+async function handleSubscriptionCanceled(subscription: Stripe.Subscription, stripe: Stripe) {
   console.log('❌ Subscription canceled:', subscription.id);
 
   const customerId = subscription.customer as string;
@@ -160,7 +161,7 @@ async function handleSubscriptionCanceled(subscription: Stripe.Subscription) {
   }
 }
 
-async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
+async function handlePaymentSucceeded(invoice: Stripe.Invoice, stripe: Stripe) {
   console.log('💰 Payment succeeded for invoice:', invoice.id);
 
   const customerId = invoice.customer as string;
@@ -191,7 +192,7 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
   }
 }
 
-async function handlePaymentFailed(invoice: Stripe.Invoice) {
+async function handlePaymentFailed(invoice: Stripe.Invoice, stripe: Stripe) {
   console.log('⚠️ Payment failed for invoice:', invoice.id);
 
   const customerId = invoice.customer as string;
@@ -208,7 +209,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
   }
 }
 
-async function handleTrialWillEnd(subscription: Stripe.Subscription) {
+async function handleTrialWillEnd(subscription: Stripe.Subscription, stripe: Stripe) {
   console.log('⏰ Trial ending soon for subscription:', subscription.id);
 
   const customerId = subscription.customer as string;

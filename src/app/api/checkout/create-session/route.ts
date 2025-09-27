@@ -6,10 +6,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const revalidate = 0;
 
-// Stripe configuration
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
-
 // Product and price mapping for the new subscription structure
 const PRICING_CONFIG = {
   'business-card': {
@@ -67,6 +63,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Get runtime environment variables - only access at runtime to prevent bundling
+    const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
 
     // Handle demo mode (when Stripe keys are not configured)
     if (!STRIPE_SECRET_KEY || STRIPE_SECRET_KEY.startsWith('sk_test_demo')) {
@@ -219,6 +219,9 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  // Get runtime environment variables - only access at runtime to prevent bundling
+  const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 
   // Handle demo mode
   if (!STRIPE_SECRET_KEY || STRIPE_SECRET_KEY.startsWith('sk_test_demo')) {

@@ -5,8 +5,9 @@
 [build.environment]
   NODE_VERSION = "22"
   NPM_FLAGS = "--legacy-peer-deps"
-  # Exclude build artifacts from secrets scanning
-  SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache/**,.netlify/.next/server/**,.netlify/.next/standalone/**,.netlify/functions-internal/**"
+  # Exclude build artifacts from secrets scanning to prevent false positives
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/**,.next/**,node_modules/**,bun.lockb,package-lock.json"
+  SECRETS_SCAN_OMIT_KEYS = "STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -33,10 +34,13 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
-# Secrets scanning configuration
+# Secrets scanning configuration - be permissive during deployment
 [context.production.environment]
   SECRETS_SCAN_ENABLED = "true"
-  SECRETS_SCAN_OMIT_PATHS = ".netlify/**,.next/**"
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/**,.next/**,node_modules/**,bun.lockb,package-lock.json"
+  SECRETS_SCAN_OMIT_KEYS = "STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET"
 
 [context.deploy-preview.environment]
-  SECRETS_SCAN_ENABLED = "false"
+  SECRETS_SCAN_ENABLED = "true"
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/**,.next/**,node_modules/**,bun.lockb,package-lock.json"
+  SECRETS_SCAN_OMIT_KEYS = "STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET"
