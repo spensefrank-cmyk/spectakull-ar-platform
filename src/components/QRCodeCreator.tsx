@@ -33,18 +33,6 @@ export function QRCodeCreator({ projectId, projectName, onClose }: QRCodeCreator
     setProjectUrl(`${baseUrl}/ar/${projectId}`);
   }, [projectId]);
 
-  // Auto-generate QR code when component loads
-  useEffect(() => {
-    if (hasAccess) {
-      generateQRCode();
-    }
-  }, [hasAccess, generateQRCode]);
-
-  // Refresh analytics data
-  useEffect(() => {
-    setProjectAnalytics(getProjectAnalytics(projectId));
-  }, [projectId, getProjectAnalytics]);
-
   const generateQRCode = useCallback(async () => {
     if (!hasAccess) {
       setShowUpgradeModal(true);
@@ -145,6 +133,18 @@ export function QRCodeCreator({ projectId, projectName, onClose }: QRCodeCreator
       setIsGenerating(false);
     }
   }, [hasAccess, setShowUpgradeModal, qrSize, projectUrl, errorLevel, isWhiteLabel, projectId, getProjectAnalytics, generateQRPattern]);
+
+  // Auto-generate QR code when component loads
+  useEffect(() => {
+    if (hasAccess) {
+      generateQRCode();
+    }
+  }, [hasAccess, generateQRCode]);
+
+  // Refresh analytics data
+  useEffect(() => {
+    setProjectAnalytics(getProjectAnalytics(projectId));
+  }, [projectId, getProjectAnalytics]);
 
   // Simplified QR pattern generator (in production, use proper QR library)
   const generateQRPattern = useCallback((text: string, errorLevel: string) => {
