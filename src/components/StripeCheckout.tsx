@@ -2,11 +2,11 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useSubscription, SubscriptionTier } from '@/contexts/SubscriptionContext';
 import { Crown, Check, X, CreditCard, Shield } from 'lucide-react';
 
 interface StripeCheckoutProps {
-  tier: 'pro' | 'enterprise';
+  tier: SubscriptionTier;
   onClose?: () => void;
 }
 
@@ -16,41 +16,89 @@ export function StripeCheckout({ tier, onClose }: StripeCheckoutProps) {
   const [error, setError] = useState<string>('');
 
   const plans = {
-    pro: {
-      name: 'Professional',
-      price: '$39.99',
-      priceId: 'price_pro_monthly', // Replace with your actual Stripe price ID
+    free: {
+      name: 'Free',
+      price: '$0',
+      priceId: 'price_free',
       features: [
-        'Unlimited AR Projects',
-        'Advanced 3D Objects & Materials',
-        'QR Analytics & Tracking',
-        'Physics & Animation',
-        'Face & Body Tracking',
-        'Team Collaboration (5 members)'
+        '3 AR projects',
+        'Live AR preview',
+        'Basic editing tools',
+        '1GB storage'
+      ]
+    },
+    'business-card': {
+      name: 'Business Card Creator',
+      price: '$19.99',
+      priceId: 'price_business_card',
+      features: [
+        '1 business card project',
+        'Unique QR code with analytics',
+        'Publishing & sharing',
+        'Live AR preview',
+        'QR scan tracking',
+        '5GB storage',
+        'Additional projects: $10 each'
+      ]
+    },
+    pro: {
+      name: 'AR Studio Pro',
+      price: '$39.99',
+      priceId: 'price_pro_monthly',
+      features: [
+        '7 AR projects',
+        'Unique QR codes for all projects',
+        'Advanced analytics dashboard',
+        'Publishing & sharing',
+        'Collaboration tools',
+        'Priority support',
+        '25GB storage'
       ]
     },
     enterprise: {
       name: 'Enterprise',
-      price: '$99.99',
-      priceId: 'price_enterprise_monthly', // Replace with your actual Stripe price ID
+      price: '$199',
+      priceId: 'price_enterprise_monthly',
       features: [
-        'Everything in Professional',
-        'Unlimited Team Members',
-        'White Label Publishing',
-        'Custom Branding',
-        'Dedicated Support',
-        'API Access'
+        '50 AR projects',
+        'Team management',
+        'Custom branding',
+        'Advanced analytics',
+        'Priority support',
+        'API access',
+        '100GB storage'
+      ]
+    },
+    'white-label': {
+      name: 'White Label',
+      price: '$499',
+      priceId: 'price_white_label_monthly',
+      features: [
+        '200 AR projects',
+        'Complete white labeling',
+        'Custom domain',
+        'Advanced analytics',
+        'Dedicated support',
+        'Custom integrations',
+        '500GB storage'
       ]
     }
   };
 
-  const currentPlan = plans[tier];
+  const currentPlan = plans[tier as keyof typeof plans];
 
   const handleCheckout = async () => {
     setIsLoading(true);
     setError('');
 
     try {
+      // Handle free tier without Stripe
+      if (tier === 'free') {
+        await upgradeTo('free');
+        onClose?.();
+        return;
+      }
+
       // This is where you'd integrate with your Stripe backend
       // For now, I'll simulate the flow since I don't have your Stripe keys
 
@@ -111,7 +159,11 @@ export function StripeCheckout({ tier, onClose }: StripeCheckoutProps) {
         <div className="p-6">
           <div className="text-center mb-6">
             <div className="text-3xl font-bold text-gray-900 mb-1">{currentPlan.price}</div>
-            <div className="text-gray-600 text-sm">per month</div>
+            <div className="text-gray-600 text-sm">
+              {tier === 'free' ? 'forever' :
+               tier === 'business-card' ? 'one-time payment' :
+               'per month'}
+            </div>
           </div>
 
           {/* Features */}
@@ -126,10 +178,12 @@ export function StripeCheckout({ tier, onClose }: StripeCheckoutProps) {
           </div>
 
           {/* Security Badge */}
-          <div className="flex items-center justify-center space-x-2 mb-6 p-3 bg-gray-50 rounded-lg">
-            <Shield className="w-4 h-4 text-green-600" />
-            <span className="text-sm text-gray-700">Secured by Stripe</span>
-          </div>
+          {tier !== 'free' && (
+            <div className="flex items-center justify-center space-x-2 mb-6 p-3 bg-gray-50 rounded-lg">
+              <Shield className="w-4 h-4 text-green-600" />
+              <span className="text-sm text-gray-700">Secured by Stripe</span>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -151,7 +205,11 @@ export function StripeCheckout({ tier, onClose }: StripeCheckoutProps) {
             ) : (
               <div className="flex items-center space-x-2">
                 <CreditCard className="w-4 h-4" />
-                <span>Subscribe to {currentPlan.name}</span>
+                <span>
+                  {tier === 'free' ? 'Continue with Free' :
+                   tier === 'business-card' ? 'Purchase Business Card' :
+                   `Subscribe to ${currentPlan.name}`}
+                </span>
               </div>
             )}
           </Button>
