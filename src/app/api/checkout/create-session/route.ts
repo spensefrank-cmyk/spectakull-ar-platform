@@ -7,7 +7,7 @@ export const revalidate = 0;
 
 // Stripe configuration
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
 
 // Product and price mapping for the new subscription structure
 const PRICING_CONFIG = {
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     if (!STRIPE_SECRET_KEY || STRIPE_SECRET_KEY.startsWith('sk_test_demo')) {
       console.log('🎭 Demo mode: Simulating Stripe checkout');
 
-      const demoUrl = successUrl || `${NEXT_PUBLIC_APP_URL}/subscription/success?session_id=demo_session&tier=${tier}`;
+      const demoUrl = successUrl || `${APP_URL}/subscription/success?session_id=demo_session&tier=${tier}`;
 
       return NextResponse.json({
         message: `Demo Mode: ${config.productName} checkout simulation`,
@@ -150,8 +150,8 @@ export async function POST(request: NextRequest) {
         },
       ],
       mode: config.mode,
-      success_url: successUrl || `${NEXT_PUBLIC_APP_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}&tier=${tier}`,
-      cancel_url: cancelUrl || `${NEXT_PUBLIC_APP_URL}/subscription?cancelled=true`,
+      success_url: successUrl || `${APP_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}&tier=${tier}`,
+      cancel_url: cancelUrl || `${APP_URL}/subscription?cancelled=true`,
       metadata: {
         tier: tier,
         purchaseType: purchaseType,

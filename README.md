@@ -75,14 +75,16 @@ Every QR code generated includes:
 ## 🔧 Environment Variables
 
 ```env
-# Required for Stripe payments
+# Required for Stripe payments (server-side only)
 STRIPE_SECRET_KEY=sk_live_... # or sk_test_... for testing
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-# Required for proper URL generation
+# Required for URL generation (can be public or server-side)
 NEXT_PUBLIC_APP_URL=https://your-domain.com
+# OR
+APP_URL=https://your-domain.com
 
-# Optional: Analytics tracking
+# Optional: Analytics tracking (public)
 NEXT_PUBLIC_ANALYTICS_ID=your_analytics_id
 ```
 
@@ -216,9 +218,14 @@ interface ProjectAnalytics {
 
 ### Required Netlify Environment Variables
 ```
+# Server-side only (secure)
 STRIPE_SECRET_KEY=your_stripe_secret_key
 STRIPE_WEBHOOK_SECRET=your_webhook_secret
+
+# Public (exposed to browser) - use either one
 NEXT_PUBLIC_APP_URL=https://your-site.netlify.app
+# OR for server-side usage only:
+APP_URL=https://your-site.netlify.app
 ```
 
 ## 📞 Support
