@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Initialize Stripe with proper ES6 import
     const stripe = new Stripe(STRIPE_SECRET_KEY, {
-      apiVersion: '2024-12-18.acacia',
+      apiVersion: '2025-08-27.basil',
     });
 
     // Create or retrieve product
@@ -228,7 +228,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const stripe = new Stripe(STRIPE_SECRET_KEY, {
-      apiVersion: '2024-12-18.acacia',
+      apiVersion: '2025-08-27.basil',
     });
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
