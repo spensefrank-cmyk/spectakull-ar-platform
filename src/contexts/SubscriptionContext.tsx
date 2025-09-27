@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 
 export type SubscriptionTier = 'free' | 'business-card' | 'pro' | 'enterprise' | 'white-label';
@@ -219,7 +219,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   // Create unique QR code with analytics tracking
-  const createQRCodeForProject = async (projectId: string): Promise<string> => {
+  const createQRCodeForProject = useCallback(async (projectId: string): Promise<string> => {
     if (!canCreateQRCode()) {
       throw new Error('QR code creation requires subscription upgrade');
     }
@@ -240,10 +240,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
     console.log('🎯 Created unique QR code with analytics:', qrCodeId);
     return qrCodeId;
-  };
+  }, [canCreateQRCode]);
 
   // Track QR code scan
-  const trackQRScan = async (qrCodeId: string) => {
+  const trackQRScan = useCallback(async (qrCodeId: string) => {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     const hour = now.getHours();
@@ -282,7 +282,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
       return analytics;
     }));
-  };
+  }, []);
 
   // Team management functions
   const createTeam = async (name: string, tier: SubscriptionTier) => {

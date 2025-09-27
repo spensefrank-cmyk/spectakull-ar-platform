@@ -144,7 +144,7 @@ export function QRCodeCreator({ projectId, projectName, onClose }: QRCodeCreator
     } finally {
       setIsGenerating(false);
     }
-  }, [hasAccess, setShowUpgradeModal, qrSize, projectUrl, errorLevel, isWhiteLabel, projectId, getProjectAnalytics]);
+  }, [hasAccess, setShowUpgradeModal, qrSize, projectUrl, errorLevel, isWhiteLabel, projectId, getProjectAnalytics, generateQRPattern]);
 
   // Simplified QR pattern generator (in production, use proper QR library)
   const generateQRPattern = useCallback((text: string, errorLevel: string) => {

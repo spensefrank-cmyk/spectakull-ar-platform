@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { useSubscription, ProjectAnalytics } from '@/contexts/SubscriptionContext';
 import {
@@ -32,11 +32,7 @@ export function QRAnalyticsDashboard({ projectId, onClose }: QRAnalyticsDashboar
   // Check if user has access to analytics
   const hasAnalyticsAccess = isFeatureAvailable('qrCodeAnalytics');
 
-  useEffect(() => {
-    loadAnalytics();
-  }, [selectedProject, dateRange, loadAnalytics]);
-
-  const loadAnalytics = async () => {
+  const loadAnalytics = useCallback(async () => {
     setIsLoading(true);
     try {
       if (selectedProject) {
@@ -50,7 +46,11 @@ export function QRAnalyticsDashboard({ projectId, onClose }: QRAnalyticsDashboar
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedProject, getProjectAnalytics, getAllAnalytics]);
+
+  useEffect(() => {
+    loadAnalytics();
+  }, [selectedProject, dateRange, loadAnalytics]);
 
   const getTotalScans = () => {
     return analytics.reduce((total, item) => total + item.totalScans, 0);
