@@ -33,6 +33,48 @@ export function QRCodeCreator({ projectId, projectName, onClose }: QRCodeCreator
     setProjectUrl(`${baseUrl}/ar/${projectId}`);
   }, [projectId]);
 
+  // Helper functions for QR code generation
+  const addFinderPattern = (pattern: boolean[][], startX: number, startY: number) => {
+    for (let i = 0; i < 7; i++) {
+      for (let j = 0; j < 7; j++) {
+        const shouldFill =
+          i === 0 || i === 6 || j === 0 || j === 6 ||
+          (i >= 2 && i <= 4 && j >= 2 && j <= 4);
+        pattern[startX + i][startY + j] = shouldFill;
+      }
+    }
+  };
+
+  const isFinderPattern = (x: number, y: number, size: number) => {
+    return (
+      (x < 7 && y < 7) ||
+      (x < 7 && y >= size - 7) ||
+      (x >= size - 7 && y < 7)
+    );
+  };
+
+  // Simplified QR pattern generator (in production, use proper QR library)
+  const generateQRPattern = useCallback((text: string, errorLevel: string) => {
+    const size = 25; // 25x25 modules for demo
+    const pattern = Array(size).fill(null).map(() => Array(size).fill(false));
+
+    // Add finder patterns (corners)
+    addFinderPattern(pattern, 0, 0);
+    addFinderPattern(pattern, size - 7, 0);
+    addFinderPattern(pattern, 0, size - 7);
+
+    // Add some data pattern (simplified)
+    for (let i = 0; i < size; i++) {
+      for (let j = 0; j < size; j++) {
+        if (!isFinderPattern(i, j, size)) {
+          pattern[i][j] = Math.random() > 0.5;
+        }
+      }
+    }
+
+    return pattern;
+  }, []);
+
   const generateQRCode = useCallback(async () => {
     if (!hasAccess) {
       setShowUpgradeModal(true);
@@ -146,46 +188,7 @@ export function QRCodeCreator({ projectId, projectName, onClose }: QRCodeCreator
     setProjectAnalytics(getProjectAnalytics(projectId));
   }, [projectId, getProjectAnalytics]);
 
-  // Simplified QR pattern generator (in production, use proper QR library)
-  const generateQRPattern = useCallback((text: string, errorLevel: string) => {
-    const size = 25; // 25x25 modules for demo
-    const pattern = Array(size).fill(null).map(() => Array(size).fill(false));
 
-    // Add finder patterns (corners)
-    addFinderPattern(pattern, 0, 0);
-    addFinderPattern(pattern, size - 7, 0);
-    addFinderPattern(pattern, 0, size - 7);
-
-    // Add some data pattern (simplified)
-    for (let i = 0; i < size; i++) {
-      for (let j = 0; j < size; j++) {
-        if (!isFinderPattern(i, j, size)) {
-          pattern[i][j] = Math.random() > 0.5;
-        }
-      }
-    }
-
-    return pattern;
-  }, []);
-
-  const addFinderPattern = (pattern: boolean[][], startX: number, startY: number) => {
-    for (let i = 0; i < 7; i++) {
-      for (let j = 0; j < 7; j++) {
-        const shouldFill =
-          i === 0 || i === 6 || j === 0 || j === 6 ||
-          (i >= 2 && i <= 4 && j >= 2 && j <= 4);
-        pattern[startX + i][startY + j] = shouldFill;
-      }
-    }
-  };
-
-  const isFinderPattern = (x: number, y: number, size: number) => {
-    return (
-      (x < 7 && y < 7) ||
-      (x < 7 && y >= size - 7) ||
-      (x >= size - 7 && y < 7)
-    );
-  };
 
   const downloadQRCode = () => {
     if (!qrCodeDataUrl) return;
