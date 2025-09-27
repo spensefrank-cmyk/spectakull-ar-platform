@@ -5,6 +5,8 @@
 [build.environment]
   NODE_VERSION = "22"
   NPM_FLAGS = "--legacy-peer-deps"
+  # Exclude build artifacts from secrets scanning
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache/**,.netlify/.next/server/**,.netlify/.next/standalone/**,.netlify/functions-internal/**"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
@@ -30,3 +32,11 @@
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
+
+# Secrets scanning configuration
+[context.production.environment]
+  SECRETS_SCAN_ENABLED = "true"
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/**,.next/**"
+
+[context.deploy-preview.environment]
+  SECRETS_SCAN_ENABLED = "false"

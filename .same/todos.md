@@ -1,9 +1,29 @@
 # Spectakull AR Platform - Development Todos
 
+## 🚨 CURRENT ISSUE: Netlify Secrets Scanning Error
+
+### 🔍 Problem Identified
+- ❌ **Netlify build failing due to secrets scanning**
+- Stripe secret key being detected in build output files
+- Build artifacts contain server-side secrets in client bundles
+- Need to configure secrets scanning exclusions
+
+### 🛠️ COMPLETED FIXES
+- [x] ✅ **Fixed Next.js 15 build compatibility issues**
+- [x] ✅ **Fixed environment variable security warnings**
+- [x] ✅ **Added missing react-router-dom dependency**
+- [x] ✅ **Fixed server/client component separation**
+- [x] ✅ **Fixed API routes + static export conflict**
+
+### 🎯 IMMEDIATE NEXT STEPS
+- [ ] 🔧 **Configure Netlify secrets scanning exclusions**
+- [ ] 🔒 **Ensure proper server-side only usage of secrets**
+- [ ] 🚀 **Redeploy to Netlify with fixed configuration**
+- [ ] ✅ **Verify successful deployment**
+
 ## ✅ COMPLETED: Advanced Subscription & QR Analytics System
 
 ### 🎉 Major Accomplishments
-- [x] ✅ **Fixed build errors for Netlify deployment**
 - [x] ✅ **Updated subscription tiers and pricing structure**
   - Free: 3 AR projects (no QR code generation/publishing)
   - Business Card: $19.99 one-time + $10 per additional project
@@ -56,19 +76,34 @@
    - Changed to hybrid SSG + dynamic deployment
    - Netlify config already set for dynamic deployment with Next.js plugin
 
-## 🎉 CURRENT STATUS: BUILD SUCCESSFULLY FIXED - READY FOR DEPLOYMENT
+4. **🔒 Security & Environment Variables**:
+   - Fixed incorrect `NEXT_PUBLIC_APP_URL` usage in server-side API code
+   - Changed to proper `APP_URL` variable for server-side operations
+   - Updated documentation to clarify public vs server-side environment variables
+   - ✅ **Resolved Netlify security scanner issue**
 
-### 🏆 All Build Issues Resolved ✅
-- ✅ Business card creator: 1 project + $10 upgrades
-- ✅ Free AR Studio: 3 projects (no QR codes/publishing)
-- ✅ Paid AR Studio: 7 projects with branded QR codes
-- ✅ Every QR code has unique analytics tracking
-- ✅ Private analytics dashboard functional
-- ✅ Project deletion warnings implemented
-- ✅ **FIXED: Next.js 15 build compatibility issues**
-- ✅ **FIXED: Server/client component separation**
-- ✅ **FIXED: API routes + static export conflict**
-- ✅ **FIXED: Async params compatibility**
+5. **📦 Dependency Management**:
+   - ✅ **Added `react-router-dom` dependency to fix Netlify build error**
+   - Build was failing on Netlify due to missing module (worked locally)
+   - App still uses Next.js App Router correctly (dependency for compatibility only)
+   - Verified local build continues to work after adding dependency
+
+## 🚨 CURRENT ISSUE: Netlify Secrets Scanning
+
+### 🔍 Issue Details
+- Netlify detecting Stripe secret keys in build output
+- Files affected:
+  - `.netlify/.next/cache/webpack/server-production/0.pack`
+  - `.netlify/.next/server/app/api/checkout/create-session/route.js`
+  - `.netlify/.next/standalone/.next/server/app/api/checkout/create-session/route.js`
+
+### 🛠️ Solution Plan
+1. **Configure Netlify secrets scanning exclusions**
+2. **Ensure server-side only secret usage**
+3. **Update netlify.toml with proper omit paths**
+4. **Redeploy with fixed configuration**
+
+## 🔧 NEXT: FIX NETLIFY SECRETS SCANNING ⚠️
 
 ### 📊 QR Analytics Features Implemented
 - ✅ Unique tracking ID per project
@@ -77,30 +112,7 @@
 - ✅ Data export capabilities (CSV format)
 - ✅ Project deletion warnings to prevent data loss
 
-### 🚀 DEPLOYMENT READY - All Issues Fixed!
-
-1. **✅ ALL BUILD ERRORS FIXED**:
-   - ✅ Fixed Next.js 15 async params compatibility
-   - ✅ Separated server/client components properly
-   - ✅ Removed deprecated config options
-   - ✅ Fixed API routes + static export conflict
-   - ✅ Build now succeeds locally and ready for Netlify
-
-2. **📦 DEPLOY NOW**:
-   - **The Netlify build WILL NOW SUCCEED** 🎉
-   - Set environment variables (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_APP_URL)
-   - Deploy as dynamic site (not static) for API route support
-   - All subscription features will work properly
-
-3. **Testing Checklist**:
-   - [ ] Test Business Card Creator with new pricing
-   - [ ] Verify QR code generation and analytics tracking
-   - [ ] Test project deletion warnings
-   - [ ] Verify admin access with password `specktacull2024!`
-   - [ ] Test subscription upgrades and additional project purchases
-   - [ ] Verify analytics dashboard functionality
-
-## 🎯 Platform Ready for Production
+### 🎯 Platform Ready for Production (After Secrets Fix)
 
 The Spectakull AR Platform now includes:
 - Advanced subscription management
@@ -111,4 +123,4 @@ The Spectakull AR Platform now includes:
 - Mobile-optimized AR studio
 - Secure payment processing
 
-**Version 87 Created** - All features implemented and tested locally.
+**Need to resolve secrets scanning before deployment** ⚠️
