@@ -366,7 +366,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       createQRCodeForProject,
       trackQRScan
     };
-  }, []);
+  }, [createQRCodeForProject, trackQRScan]);
 
   return (
     <SubscriptionContext.Provider value={contextValue}>

@@ -34,7 +34,7 @@ export function QRAnalyticsDashboard({ projectId, onClose }: QRAnalyticsDashboar
 
   useEffect(() => {
     loadAnalytics();
-  }, [selectedProject, dateRange]);
+  }, [selectedProject, dateRange, loadAnalytics]);
 
   const loadAnalytics = async () => {
     setIsLoading(true);

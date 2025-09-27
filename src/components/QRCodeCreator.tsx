@@ -38,7 +38,7 @@ export function QRCodeCreator({ projectId, projectName, onClose }: QRCodeCreator
     if (hasAccess) {
       generateQRCode();
     }
-  }, [hasAccess]);
+  }, [hasAccess, generateQRCode]);
 
   // Refresh analytics data
   useEffect(() => {
@@ -147,7 +147,7 @@ export function QRCodeCreator({ projectId, projectName, onClose }: QRCodeCreator
   }, [hasAccess, setShowUpgradeModal, qrSize, projectUrl, errorLevel, isWhiteLabel, projectId, getProjectAnalytics]);
 
   // Simplified QR pattern generator (in production, use proper QR library)
-  const generateQRPattern = (text: string, errorLevel: string) => {
+  const generateQRPattern = useCallback((text: string, errorLevel: string) => {
     const size = 25; // 25x25 modules for demo
     const pattern = Array(size).fill(null).map(() => Array(size).fill(false));
 
@@ -166,7 +166,7 @@ export function QRCodeCreator({ projectId, projectName, onClose }: QRCodeCreator
     }
 
     return pattern;
-  };
+  }, []);
 
   const addFinderPattern = (pattern: boolean[][], startX: number, startY: number) => {
     for (let i = 0; i < 7; i++) {

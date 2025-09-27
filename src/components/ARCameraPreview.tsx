@@ -471,7 +471,8 @@ export function ARCameraPreview({ objects, className = "w-full h-full" }: ARCame
       console.log('🧹 Cleaning up ARCameraPreview');
       stopCamera();
     };
-  }, []); // Remove stopCamera dependency to avoid re-running
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // stopCamera intentionally excluded to avoid re-running cleanup
 
   // Cleanup animation when AR stops
   useEffect(() => {

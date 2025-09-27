@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Stripe from 'stripe';
 
 // Stripe configuration
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
@@ -44,7 +45,7 @@ const PRICING_CONFIG = {
     interval: 'month',
     description: '200 projects, complete customization, and white labeling'
   }
-};
+} as const;
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,8 +78,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Initialize Stripe (only import when needed)
-    const stripe = require('stripe')(STRIPE_SECRET_KEY);
+    // Initialize Stripe with proper ES6 import
+    const stripe = new Stripe(STRIPE_SECRET_KEY, {
+      apiVersion: '2024-12-18.acacia',
+    });
 
     // Create or retrieve product
     const products = await stripe.products.list({
@@ -224,7 +227,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const stripe = require('stripe')(STRIPE_SECRET_KEY);
+    const stripe = new Stripe(STRIPE_SECRET_KEY, {
+      apiVersion: '2024-12-18.acacia',
+    });
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     return NextResponse.json({
