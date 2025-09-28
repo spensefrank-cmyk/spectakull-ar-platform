@@ -1,33 +1,26 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QRCodeCreator } from '@/components/QRCodeCreator';
 import { SubscriptionGuard } from '@/components/SubscriptionGuard';
+import { RealWebAR } from '@/components/RealWebAR';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useARState } from '@/contexts/ARStateContext';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
-// TypeScript declarations for KitCore WebAR using ES2015 module syntax
-interface KitCoreWebARElement extends HTMLElement {
-  mode?: string;
-  'auto-button'?: string;
-  onLoad?: () => void;
-}
-
-interface KitCoreWebARObjectElement extends HTMLElement {
+// SceneObject interface for AR objects
+interface SceneObject {
+  id: string;
+  type: string;
+  name: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+  color?: string;
+  visible: boolean;
   src?: string;
-  position?: string;
-  rotation?: string;
-  scale?: string;
-  animation?: string;
-}
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'kitcore-webar': KitCoreWebARElement;
-    'kitcore-webar-object': KitCoreWebARObjectElement;
-  }
 }
 
 // 3D Object options with model URLs
@@ -97,26 +90,7 @@ interface AnalyticsEvent {
   userId?: string;
 }
 
-// TypeScript declarations for KitCore WebAR
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace JSX {
-    interface IntrinsicElements {
-      'kitcore-webar': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        mode?: string;
-        'auto-button'?: string;
-        onLoad?: () => void;
-      };
-      'kitcore-webar-object': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        src?: string;
-        position?: string;
-        rotation?: string;
-        scale?: string;
-        animation?: string;
-      };
-    }
-  }
-}
+
 
 export default function BusinessCardARPage() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -136,7 +110,6 @@ export default function BusinessCardARPage() {
   });
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false);
   const [previewMode, setPreviewMode] = useState<'floor' | 'wall' | 'image'>('floor');
-  const [isARActive, setIsARActive] = useState(false);
 
   // Analytics State
   const [sessionId] = useState(() => Date.now().toString());
@@ -151,6 +124,57 @@ export default function BusinessCardARPage() {
 
   const { currentTier, isFeatureAvailable } = useSubscription();
   const { user, logout } = useAuth();
+
+  // AR State Management
+  const {
+    objects: arObjects,
+    selectedObject: arSelectedObject,
+    addObject,
+    updateObject,
+    removeObject,
+    selectObject,
+    session: arSession,
+    updateSession,
+    initializeARSession,
+    setCurrentProject
+  } = useARState();
+
+  // Initialize AR session and project on mount
+  useEffect(() => {
+    initializeARSession();
+    setCurrentProject('business-card-ar');
+  }, [initializeARSession, setCurrentProject]);
+
+  // Sync selected object with AR state when it changes
+  useEffect(() => {
+    if (selectedObject) {
+      // Remove previous objects and add the new one
+      arObjects.forEach(obj => removeObject(obj.id));
+
+      const arObjectId = addObject({
+        type: selectedObject.id || 'cube',
+        name: selectedObject.name,
+        position: [arConfig.position.x, arConfig.position.y, arConfig.position.z],
+        rotation: [arConfig.rotation.x, arConfig.rotation.y, arConfig.rotation.z],
+        scale: [arConfig.scale.x, arConfig.scale.y, arConfig.scale.z],
+        color: '#3b82f6',
+        visible: true,
+        mediaUrl: selectedObject.src || selectedObject.url,
+        mediaType: selectedObject.src ? '3d-model' : undefined,
+        animation: arConfig.animation
+      });
+
+      selectObject(arObjectId);
+    }
+  }, [selectedObject, arConfig, addObject, removeObject, selectObject, arObjects]);
+
+  // Update AR session when preview mode changes
+  useEffect(() => {
+    updateSession({
+      mode: previewMode as 'floor' | 'wall' | 'viewer',
+      isActive: arSession.isActive
+    });
+  }, [previewMode, updateSession, arSession.isActive]);
 
   // Check if user has access to business card creator (including admin access)
   const hasBusinessCardAccess = isAdminAuthenticated || currentTier === 'business-card' || currentTier === 'pro' || currentTier === 'enterprise' || currentTier === 'white-label';
@@ -202,18 +226,8 @@ export default function BusinessCardARPage() {
   };
 
   const updateARPreview = (config: ARObjectConfig) => {
-    // Update KitCore WebAR element properties
-    const webArObject = document.querySelector('kitcore-webar-object');
-    if (webArObject) {
-      // Apply transformations
-      webArObject.setAttribute('position', `${config.position.x} ${config.position.y} ${config.position.z}`);
-      webArObject.setAttribute('rotation', `${config.rotation.x} ${config.rotation.y} ${config.rotation.z}`);
-      webArObject.setAttribute('scale', `${config.scale.x} ${config.scale.y} ${config.scale.z}`);
-
-      if (config.animation && config.animation !== 'none') {
-        webArObject.setAttribute('animation', config.animation);
-      }
-    }
+    // AR preview will be updated automatically through React props
+    console.log('AR configuration updated:', config);
   };
 
   const resetARConfig = () => {
@@ -472,9 +486,9 @@ export default function BusinessCardARPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 ar-no-select">
       {/* Navigation Header */}
-      <nav className="bg-black/20 backdrop-blur-md border-b border-white/10 p-4">
+      <nav className="bg-black/20 backdrop-blur-md border-b border-white/10 p-2 md:p-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <Link href="/" className="text-white font-bold text-xl">
@@ -978,7 +992,7 @@ export default function BusinessCardARPage() {
               </div>
 
               <div
-                className="relative bg-black/10 rounded-lg overflow-hidden"
+                className="relative bg-black/10 rounded-lg overflow-hidden h-[400px]"
                 onMouseEnter={() => {
                   if (!isARActive) {
                     setIsARActive(true);
@@ -986,22 +1000,21 @@ export default function BusinessCardARPage() {
                   }
                 }}
               >
-                <kitcore-webar
-                  mode={previewMode}
-                  auto-button="true"
-                  onLoad={() => {
-                    // Apply current AR configuration when WebAR loads
-                    setTimeout(() => updateARPreview(arConfig), 500);
-                  }}
-                >
-                  <kitcore-webar-object
-                    src={selectedObject?.src || selectedObject?.url}
-                    position={`${arConfig.position.x} ${arConfig.position.y} ${arConfig.position.z}`}
-                    rotation={`${arConfig.rotation.x} ${arConfig.rotation.y} ${arConfig.rotation.z}`}
-                    scale={`${arConfig.scale.x} ${arConfig.scale.y} ${arConfig.scale.z}`}
-                    animation={arConfig.animation !== 'none' ? arConfig.animation : undefined}
-                  />
-                </kitcore-webar>
+                <RealWebAR
+                  objects={selectedObject ? [{
+                    id: 'preview-object',
+                    type: selectedObject.id || 'cube',
+                    name: selectedObject.name,
+                    position: [arConfig.position.x, arConfig.position.y, arConfig.position.z],
+                    rotation: [arConfig.rotation.x, arConfig.rotation.y, arConfig.rotation.z],
+                    scale: [arConfig.scale.x, arConfig.scale.y, arConfig.scale.z],
+                    color: '#3b82f6',
+                    visible: true,
+                    src: selectedObject.src || selectedObject.url
+                  }] : []}
+                  mode={previewMode as 'floor' | 'wall' | 'viewer'}
+                  className="w-full h-full"
+                />
 
                 {/* Live Configuration Overlay */}
                 {showAdvancedEditor && (
@@ -1014,7 +1027,12 @@ export default function BusinessCardARPage() {
 
                 {/* AR Status Indicator */}
                 <div className="absolute top-2 right-2">
-                  <div className={`w-3 h-3 rounded-full ${isARActive ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-3 h-3 rounded-full ${arSession.isActive ? 'bg-green-500 animate-pulse' : arSession.isSupported ? 'bg-yellow-500' : 'bg-gray-500'}`}></div>
+                    <div className="text-xs text-white bg-black/70 px-2 py-1 rounded">
+                      {arSession.isActive ? 'AR Live' : arSession.isSupported ? 'AR Ready' : '3D Viewer'}
+                    </div>
+                  </div>
                 </div>
               </div>
 

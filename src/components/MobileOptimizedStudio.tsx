@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useARState } from '@/contexts/ARStateContext';
 import { ARCameraPreview } from '@/components/ARCameraPreview';
 import { MediaUploadPanel } from '@/components/MediaUploadPanel';
 import { ARMarkerPanel } from '@/components/ARMarkerPanel';
@@ -107,6 +108,19 @@ export function MobileOptimizedStudio({ selectedObjectId }: MobileOptimizedStudi
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   const [showAnimationPanel, setShowAnimationPanel] = useState(false);
   const [showOnboardingTour, setShowOnboardingTour] = useState(false);
+
+  // AR State Management
+  const {
+    objects: sceneObjects,
+    selectedObject: arSelectedObject,
+    addObject: addARObject,
+    updateObject: updateARObject,
+    removeObject: removeARObject,
+    selectObject: selectARObject,
+    session: arSession,
+    initializeARSession,
+    setCurrentProject
+  } = useARState();
   const [uploadedMedia, setUploadedMedia] = useState<Array<{
     id: string;
     name: string;
@@ -130,46 +144,38 @@ export function MobileOptimizedStudio({ selectedObjectId }: MobileOptimizedStudi
       size: 512000
     }
   ]);
-  const [sceneObjects, setSceneObjects] = useState<Array<{
-    id: string;
-    type: string;
-    name: string;
-    position: [number, number, number];
-    rotation: [number, number, number];
-    scale: [number, number, number];
-    color?: string;
-    metallic?: number;
-    roughness?: number;
-    visible: boolean;
-    mediaUrl?: string;
-    mediaType?: 'image' | 'video' | '3d-model';
-  }>>([
-    // Demo objects so users can see the AR preview immediately
-    {
-      id: 'demo-cube',
-      type: 'cube',
-      name: 'Welcome Cube',
-      position: [0, 0.5, 0],
-      rotation: [0, 45, 0],
-      scale: [1, 1, 1],
-      color: '#ff6b6b',
-      metallic: 0.1,
-      roughness: 0.3,
-      visible: true
-    },
-    {
-      id: 'demo-sphere',
-      type: 'sphere',
-      name: 'Demo Sphere',
-      position: [2, 0.5, 0],
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1],
-      color: '#4ecdc4',
-      metallic: 0.8,
-      roughness: 0.2,
-      visible: true
+  // Initialize AR session and add demo objects
+  useEffect(() => {
+    initializeARSession();
+    setCurrentProject('studio');
+
+    // Add demo objects if none exist
+    if (sceneObjects.length === 0) {
+      const demoCubeId = addARObject({
+        type: 'cube',
+        name: 'Welcome Cube',
+        position: [0, 0.5, 0],
+        rotation: [0, 45, 0],
+        scale: [1, 1, 1],
+        color: '#ff6b6b',
+        metallic: 0.1,
+        roughness: 0.3,
+        visible: true
+      });
+
+      addARObject({
+        type: 'sphere',
+        name: 'Demo Sphere',
+        position: [2, 0.5, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+        color: '#4ecdc4',
+        metallic: 0.8,
+        roughness: 0.2,
+        visible: true
+      });
     }
-  ]);
+  }, [initializeARSession, setCurrentProject, addARObject, sceneObjects.length]);
   const [viewMode, setViewMode] = useState<'sandbox' | 'camera'>('sandbox');
 
   const { isFeatureAvailable, currentTier, setShowUpgradeModal, projectCount, canCreateProject } = useSubscription();
@@ -183,8 +189,7 @@ export function MobileOptimizedStudio({ selectedObjectId }: MobileOptimizedStudi
       return;
     }
 
-    const newObject = {
-      id: `${type.toLowerCase()}-${Date.now()}`,
+    const objectId = addARObject({
       type: type.toLowerCase(),
       name: `${type.charAt(0).toUpperCase() + type.slice(1)} ${sceneObjects.length + 1}`,
       position: [
@@ -198,9 +203,10 @@ export function MobileOptimizedStudio({ selectedObjectId }: MobileOptimizedStudi
       metallic: Math.random() * 0.5,
       roughness: 0.3 + Math.random() * 0.4,
       visible: true
-    };
+    });
 
-    setSceneObjects(prev => [...prev, newObject]);
+    // Select the newly created object
+    selectARObject(objectId);
   };
 
   const handleTabClick = (tab: StudioTab) => {
@@ -546,7 +552,11 @@ export function MobileOptimizedStudio({ selectedObjectId }: MobileOptimizedStudi
             {viewMode === 'sandbox' ? (
               <ARSandbox
                 objects={sceneObjects}
-                onObjectsChange={setSceneObjects}
+                onObjectsChange={(newObjects) => {
+                  // This function handles updates from ARSandbox
+                  // The ARSandbox component should ideally be updated to use useARState directly
+                  console.log('AR objects updated via ARSandbox:', newObjects);
+                }}
                 availableMedia={uploadedMedia}
                 onMediaUpload={() => setShowMediaUpload(true)}
               />
@@ -629,13 +639,26 @@ export function MobileOptimizedStudio({ selectedObjectId }: MobileOptimizedStudi
       {showTemplateLibrary && (
         <TemplateLibrary
           onTemplateSelect={(template) => {
-            // Convert template objects to match our scene object interface
-            const convertedObjects = template.objects.map(obj => ({
-              ...obj,
-              name: obj.id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-              visible: true
-            }));
-            setSceneObjects(convertedObjects);
+            // Clear existing objects and add template objects
+            sceneObjects.forEach(obj => removeARObject(obj.id));
+
+            // Convert template objects to match our AR object interface
+            template.objects.forEach(obj => {
+              addARObject({
+                type: obj.type,
+                name: obj.id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                position: obj.position,
+                rotation: obj.rotation,
+                scale: obj.scale,
+                color: obj.color,
+                metallic: obj.metallic,
+                roughness: obj.roughness,
+                visible: true,
+                mediaUrl: obj.mediaUrl,
+                mediaType: obj.mediaType
+              });
+            });
+
             setShowTemplateLibrary(false);
           }}
           onClose={() => setShowTemplateLibrary(false)}

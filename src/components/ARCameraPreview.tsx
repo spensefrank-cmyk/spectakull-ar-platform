@@ -2,8 +2,9 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, CameraOff, RotateCcw, Settings, Maximize2 } from 'lucide-react';
+import { Camera, CameraOff, RotateCcw, Settings, Maximize2, Wifi, WifiOff } from 'lucide-react';
 import * as THREE from 'three';
+import { useARConnection } from '@/lib/ar-connection';
 
 interface SceneObject {
   id: string;
@@ -35,6 +36,13 @@ export function ARCameraPreview({ objects, className = "w-full h-full" }: ARCame
   const [isLoading, setIsLoading] = useState(false);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
 
+  // AR Connection for live view
+  const { status: connectionStatus, data: liveData, sendData, reconnect, connectionInfo } = useARConnection({
+    enableWebSocket: true,
+    enableWebRTC: false,
+    fallbackToPolling: true
+  });
+
   const startCamera = async () => {
     setIsLoading(true);
     setError('');
@@ -47,7 +55,13 @@ export function ARCameraPreview({ objects, className = "w-full h-full" }: ARCame
         throw new Error('Camera not supported in this browser');
       }
 
-      // Enhanced camera constraints with better mobile support
+      // Stop existing stream first to prevent conflicts
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+      }
+
+      // Enhanced camera constraints with better mobile support and fallback
       let constraints: MediaStreamConstraints = {
         video: {
           facingMode: facingMode,
@@ -443,6 +457,35 @@ export function ARCameraPreview({ objects, className = "w-full h-full" }: ARCame
     });
   }, [objects, isARActive]);
 
+  // Sync with live AR data from other devices
+  useEffect(() => {
+    if (liveData && isARActive) {
+      console.log('🔄 Syncing live AR data:', liveData);
+
+      // Send current AR state to other connected clients
+      if (connectionStatus === 'connected') {
+        sendData({
+          objects: objects.map(obj => ({
+            id: obj.id,
+            type: obj.type,
+            position: obj.position,
+            rotation: obj.rotation,
+            scale: obj.scale,
+            color: obj.color,
+            visible: obj.visible
+          })),
+          camera: {
+            position: [0, 1.6, 3],
+            rotation: [0, 0, 0],
+            fov: 75
+          },
+          sessionId: 'ar-camera-preview',
+          timestamp: Date.now()
+        });
+      }
+    }
+  }, [liveData, objects, isARActive, connectionStatus, sendData]);
+
   // Handle video loaded
   const handleVideoLoaded = () => {
     if (videoRef.current && canvasRef.current && rendererRef.current && cameraRef.current) {
@@ -534,6 +577,21 @@ export function ARCameraPreview({ objects, className = "w-full h-full" }: ARCame
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                 <span>📱 Live AR Preview</span>
+                {/* Live Connection Status */}
+                <div className="flex items-center space-x-1 ml-2 pl-2 border-l border-gray-500">
+                  {connectionStatus === 'connected' ? (
+                    <Wifi className="w-3 h-3 text-green-400" />
+                  ) : connectionStatus === 'connecting' ? (
+                    <div className="w-3 h-3 border border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <WifiOff className="w-3 h-3 text-red-400" />
+                  )}
+                  <span className="text-xs">
+                    {connectionStatus === 'connected' ? 'Live' :
+                     connectionStatus === 'connecting' ? 'Sync...' :
+                     'Offline'}
+                  </span>
+                </div>
               </div>
             ) : (
               '📷 Camera Preview'
@@ -618,8 +676,37 @@ export function ARCameraPreview({ objects, className = "w-full h-full" }: ARCame
               Stop AR
             </Button>
 
-            <div className="bg-black/70 rounded-lg px-3 py-2 text-white text-sm flex items-center">
-              📦 {objects.length} AR Objects
+            <div className="bg-black/70 rounded-lg px-3 py-2 text-white text-sm flex items-center space-x-4">
+              <span>📦 {objects.length} AR Objects</span>
+
+              {/* Live Connection Info */}
+              <div className="flex items-center space-x-2 border-l border-gray-500 pl-4">
+                <div className="flex items-center space-x-1">
+                  {connectionStatus === 'connected' ? (
+                    <Wifi className="w-4 h-4 text-green-400" />
+                  ) : connectionStatus === 'connecting' ? (
+                    <div className="w-4 h-4 border border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <WifiOff className="w-4 h-4 text-red-400" />
+                  )}
+                  <span className="text-xs">
+                    {connectionInfo.connectionType === 'websocket' ? 'WebSocket' :
+                     connectionInfo.connectionType === 'polling' ? 'Polling' :
+                     'Offline'}
+                  </span>
+                </div>
+
+                {connectionStatus !== 'connected' && connectionStatus !== 'connecting' && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={reconnect}
+                    className="h-6 px-2 text-xs bg-blue-600/70 hover:bg-blue-700"
+                  >
+                    Reconnect
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         )}

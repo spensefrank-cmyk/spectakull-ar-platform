@@ -2,6 +2,79 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Mobile AR optimizations */
+@media (max-width: 768px) {
+  /* Prevent zoom on double tap */
+  * {
+    touch-action: manipulation;
+  }
+
+  /* Ensure full viewport usage on mobile */
+  html, body {
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height for mobile browsers */
+    overflow-x: hidden;
+  }
+
+  /* Improve touch targets for mobile */
+  button, .ar-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* AR canvas optimizations */
+  canvas {
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* WebXR and AR specific styles */
+.ar-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 9999;
+}
+
+/* Prevent text selection during AR interactions */
+.ar-no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* High DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .ar-canvas {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: optimize-contrast;
+  }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+  .ar-ios-fix {
+    -webkit-appearance: none;
+    -webkit-user-select: none;
+  }
+}
+
+/* Landscape mode optimizations for mobile AR */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  .ar-landscape {
+    height: 100vh;
+    height: 100dvh;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

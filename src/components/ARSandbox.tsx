@@ -77,16 +77,18 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
 
     // Renderer setup with better mobile optimization
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: window.devicePixelRatio <= 1,
       alpha: true,
       powerPreference: "high-performance",
-      failIfMajorPerformanceCaveat: false
+      failIfMajorPerformanceCaveat: false,
+      preserveDrawingBuffer: true
     });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !(/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.xr.enabled = true;
     rendererRef.current = renderer;
 
     // Enhanced lighting for better visibility
@@ -127,14 +129,39 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
       renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
     }
 
-    // Mouse/touch controls
+    // Enhanced mobile/touch controls
     let isDragging = false;
+    let isMultiTouch = false;
+    let initialPinchDistance = 0;
     let previousMousePosition = { x: 0, y: 0 };
 
     const handleMouseDown = (event: MouseEvent | TouchEvent) => {
+      event.preventDefault();
       const rect = renderer.domElement.getBoundingClientRect();
-      const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
-      const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+
+      let clientX: number, clientY: number;
+
+      if ('touches' in event) {
+        if (event.touches.length === 2) {
+          // Multi-touch for pinch zoom
+          isMultiTouch = true;
+          const touch1 = event.touches[0];
+          const touch2 = event.touches[1];
+          initialPinchDistance = Math.sqrt(
+            Math.pow(touch2.clientX - touch1.clientX, 2) +
+            Math.pow(touch2.clientY - touch1.clientY, 2)
+          );
+          return;
+        } else if (event.touches.length === 1) {
+          clientX = event.touches[0].clientX;
+          clientY = event.touches[0].clientY;
+        } else {
+          return;
+        }
+      } else {
+        clientX = event.clientX;
+        clientY = event.clientY;
+      }
 
       mouseRef.current.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       mouseRef.current.y = -((clientY - rect.top) / rect.height) * 2 + 1;
@@ -160,29 +187,75 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
     };
 
     const handleMouseMove = (event: MouseEvent | TouchEvent) => {
-      if (!isDragging) return;
+      event.preventDefault();
 
-      const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
-      const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+      if ('touches' in event) {
+        if (event.touches.length === 2 && isMultiTouch) {
+          // Handle pinch zoom
+          const touch1 = event.touches[0];
+          const touch2 = event.touches[1];
+          const currentDistance = Math.sqrt(
+            Math.pow(touch2.clientX - touch1.clientX, 2) +
+            Math.pow(touch2.clientY - touch1.clientY, 2)
+          );
 
-      const deltaX = clientX - previousMousePosition.x;
-      const deltaY = clientY - previousMousePosition.y;
+          if (initialPinchDistance > 0) {
+            const scale = currentDistance / initialPinchDistance;
+            const newDistance = cameraDistance / scale;
+            setCameraDistance(Math.max(2, Math.min(50, newDistance)));
+          }
+          return;
+        } else if (event.touches.length === 1 && isDragging && !isMultiTouch) {
+          const clientX = event.touches[0].clientX;
+          const clientY = event.touches[0].clientY;
 
-      // Rotate camera around the scene
-      const spherical = new THREE.Spherical();
-      spherical.setFromVector3(camera.position);
-      spherical.theta -= deltaX * 0.01;
-      spherical.phi += deltaY * 0.01;
-      spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+          const deltaX = clientX - previousMousePosition.x;
+          const deltaY = clientY - previousMousePosition.y;
 
-      camera.position.setFromSpherical(spherical);
-      camera.lookAt(0, 0, 0);
+          // Rotate camera around the scene with mobile-friendly sensitivity
+          const spherical = new THREE.Spherical();
+          spherical.setFromVector3(camera.position);
+          spherical.theta -= deltaX * 0.005; // Reduced sensitivity for mobile
+          spherical.phi += deltaY * 0.005;
+          spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
 
-      previousMousePosition = { x: clientX, y: clientY };
+          camera.position.setFromSpherical(spherical);
+          camera.lookAt(0, 0, 0);
+
+          previousMousePosition = { x: clientX, y: clientY };
+        }
+      } else if (isDragging) {
+        // Mouse handling
+        const clientX = event.clientX;
+        const clientY = event.clientY;
+
+        const deltaX = clientX - previousMousePosition.x;
+        const deltaY = clientY - previousMousePosition.y;
+
+        // Rotate camera around the scene
+        const spherical = new THREE.Spherical();
+        spherical.setFromVector3(camera.position);
+        spherical.theta -= deltaX * 0.01;
+        spherical.phi += deltaY * 0.01;
+        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+
+        camera.position.setFromSpherical(spherical);
+        camera.lookAt(0, 0, 0);
+
+        previousMousePosition = { x: clientX, y: clientY };
+      }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (event?: TouchEvent) => {
       isDragging = false;
+      isMultiTouch = false;
+      initialPinchDistance = 0;
+
+      // Handle touch end properly
+      if (event && 'touches' in event && event.touches.length === 0) {
+        isDragging = false;
+        isMultiTouch = false;
+      }
     };
 
     // Add event listeners
