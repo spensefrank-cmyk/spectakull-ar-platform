@@ -23,18 +23,19 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Spectakull - No-Code AR Creation Platform",
   description: "Create professional augmented reality experiences without coding. Revolutionary browser-based AR platform.",
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-    viewportFit: 'cover'
-  },
   other: {
     'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'black-translucent'
   }
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover'
 };
 
 export default function RootLayout({
