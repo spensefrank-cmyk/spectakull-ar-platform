@@ -5,12 +5,10 @@ const nextConfig = {
     unoptimized: true
   },
   // Enhanced configuration for AR live view and WebSocket connections
-  experimental: {
-    turbo: {
-      loaders: {
-        '.glb': ['file-loader'],
-        '.gltf': ['file-loader']
-      }
+  turbopack: {
+    rules: {
+      '*.glb': ['file-loader'],
+      '*.gltf': ['file-loader']
     }
   },
   // Headers for AR and WebXR
