@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Camera, Play, Square, RotateCcw, Settings } from 'lucide-react';
 import * as THREE from 'three';
@@ -207,11 +207,13 @@ export function RealWebAR({ objects, mode = 'floor', className = '' }: RealWebAR
           if (hitTestResults.length > 0) {
             const hit = hitTestResults[0];
             const referenceSpace = renderer.xr.getReferenceSpace();
-            const hitPose = hit.getPose(referenceSpace);
+            if (referenceSpace) {
+              const hitPose = hit.getPose(referenceSpace);
 
-            if (hitPose && reticleRef.current) {
-              reticleRef.current.visible = true;
-              reticleRef.current.matrix.fromArray(hitPose.transform.matrix);
+              if (hitPose && reticleRef.current) {
+                reticleRef.current.visible = true;
+                reticleRef.current.matrix.fromArray(hitPose.transform.matrix);
+              }
             }
           } else if (reticleRef.current) {
             reticleRef.current.visible = false;
@@ -442,7 +444,7 @@ export function RealWebAR({ objects, mode = 'floor', className = '' }: RealWebAR
     }
   };
 
-  const placeObjectAtReticle = () => {
+  const placeObjectAtReticle = useCallback(() => {
     if (!reticleRef.current || !reticleRef.current.visible) return;
 
     // Place the first visible object at reticle position
@@ -456,7 +458,7 @@ export function RealWebAR({ objects, mode = 'floor', className = '' }: RealWebAR
       mesh.position.setFromMatrixPosition(reticleRef.current.matrix);
       mesh.position.y += 0.1; // Slightly above the surface
     }
-  };
+  }, [objects]);
 
   if (isLoading) {
     return (
