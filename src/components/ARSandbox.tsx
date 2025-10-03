@@ -47,359 +47,499 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
   const objectsMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
   const mouseRef = useRef<THREE.Vector2>(new THREE.Vector2());
+  const animationFrameRef = useRef<number>();
+  const frameCountRef = useRef<number>(0);
 
   const [selectedObject, setSelectedObject] = useState<string | null>(null);
   const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
   const [showGrid, setShowGrid] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showMediaPanel, setShowMediaPanel] = useState(false);
-  const [cameraDistance, setCameraDistance] = useState(8.66); // sqrt(5^2 + 5^2 + 5^2)
+  const [cameraDistance, setCameraDistance] = useState(8.66);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isThreeJSSupported, setIsThreeJSSupported] = useState(true);
+  const [sceneReady, setSceneReady] = useState(false);
 
-  // Initialize Three.js scene
+  // Enhanced mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent;
+      const isMobileUA = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+      const isSmallScreen = window.innerWidth < 768;
+      const isTouchDevice = 'ontouchstart' in window;
+
+      setIsMobile(isMobileUA || isSmallScreen || isTouchDevice);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Initialize Three.js scene with mobile optimization
   useEffect(() => {
     if (!mountRef.current) return;
 
     const mount = mountRef.current;
-    // Better mobile sizing with minimum dimensions
-    const width = Math.max(mount.clientWidth || 400, 300);
-    const height = Math.max(mount.clientHeight || 300, 200);
+    let width = mount.clientWidth || 400;
+    let height = mount.clientHeight || 300;
 
-    // Scene setup
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a); // Darker background for better contrast
-    sceneRef.current = scene;
+    // Ensure minimum dimensions
+    width = Math.max(width, 300);
+    height = Math.max(height, 200);
 
-    // Camera setup
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-    camera.position.set(5, 5, 5);
-    camera.lookAt(0, 0, 0);
-    cameraRef.current = camera;
+    console.log('🎯 Initializing ARSandbox:', { width, height, isMobile });
 
-    // Renderer setup with better mobile optimization
-    const renderer = new THREE.WebGLRenderer({
-      antialias: window.devicePixelRatio <= 1,
-      alpha: true,
-      powerPreference: "high-performance",
-      failIfMajorPerformanceCaveat: false,
-      preserveDrawingBuffer: true
-    });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = !(/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.xr.enabled = true;
-    rendererRef.current = renderer;
+    try {
+      // Scene setup
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(isMobile ? 0x2a2a2a : 0x1a1a1a);
+      sceneRef.current = scene;
 
-    // Enhanced lighting for better visibility
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(ambientLight);
+      // Camera setup with mobile-friendly settings
+      const camera = new THREE.PerspectiveCamera(
+        isMobile ? 60 : 75, // Narrower FOV for mobile
+        width / height,
+        0.1,
+        100 // Reduced far plane for better performance
+      );
+      camera.position.set(isMobile ? 4 : 5, isMobile ? 4 : 5, isMobile ? 4 : 5);
+      camera.lookAt(0, 0, 0);
+      cameraRef.current = camera;
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    directionalLight.position.set(10, 10, 5);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.setScalar(2048);
-    scene.add(directionalLight);
+      // Mobile-optimized renderer
+      const renderer = new THREE.WebGLRenderer({
+        antialias: !isMobile, // Disable antialiasing on mobile for performance
+        alpha: true,
+        powerPreference: isMobile ? "default" : "high-performance",
+        failIfMajorPerformanceCaveat: false,
+        preserveDrawingBuffer: true
+      });
 
-    // Add fill light to prevent harsh shadows
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    fillLight.position.set(-5, 5, -5);
-    scene.add(fillLight);
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
 
-    // Add visible grid with better contrast
-    const gridHelper = new THREE.GridHelper(10, 10, 0x888888, 0x444444);
-    gridHelper.name = 'grid';
-    scene.add(gridHelper);
-
-    // Add coordinate axes for better orientation
-    const axesHelper = new THREE.AxesHelper(5);
-    axesHelper.name = 'axes';
-    scene.add(axesHelper);
-
-    // Add mouse wheel zoom support
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const zoomFactor = event.deltaY > 0 ? 1.1 : 0.9;
-      setCameraDistance(prev => Math.max(2, Math.min(50, prev * zoomFactor)));
-    };
-
-    // Append renderer to mount
-    if (mount) {
-      mount.appendChild(renderer.domElement);
-      renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
-    }
-
-    // Enhanced mobile/touch controls
-    let isDragging = false;
-    let isMultiTouch = false;
-    let initialPinchDistance = 0;
-    let previousMousePosition = { x: 0, y: 0 };
-
-    const handleMouseDown = (event: MouseEvent | TouchEvent) => {
-      event.preventDefault();
-      const rect = renderer.domElement.getBoundingClientRect();
-
-      let clientX: number, clientY: number;
-
-      if ('touches' in event) {
-        if (event.touches.length === 2) {
-          // Multi-touch for pinch zoom
-          isMultiTouch = true;
-          const touch1 = event.touches[0];
-          const touch2 = event.touches[1];
-          initialPinchDistance = Math.sqrt(
-            Math.pow(touch2.clientX - touch1.clientX, 2) +
-            Math.pow(touch2.clientY - touch1.clientY, 2)
-          );
-          return;
-        } else if (event.touches.length === 1) {
-          clientX = event.touches[0].clientX;
-          clientY = event.touches[0].clientY;
-        } else {
-          return;
-        }
+      // Simplified settings for mobile
+      if (isMobile) {
+        renderer.shadowMap.enabled = false;
+        // Simplified rendering for mobile performance
       } else {
-        clientX = event.clientX;
-        clientY = event.clientY;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        // Full quality rendering for desktop
       }
 
-      mouseRef.current.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-      mouseRef.current.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      rendererRef.current = renderer;
 
-      // Raycast for object selection
-      raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects(Array.from(objectsMapRef.current.values()));
+      // Simplified lighting for mobile performance
+      const ambientLight = new THREE.AmbientLight(0xffffff, isMobile ? 0.6 : 0.4);
+      scene.add(ambientLight);
 
-      if (intersects.length > 0) {
-        const clickedMesh = intersects[0].object as THREE.Mesh;
-        const objectId = Array.from(objectsMapRef.current.entries())
-          .find(([_, mesh]) => mesh === clickedMesh)?.[0];
+      if (!isMobile) {
+        // Only add complex lighting on desktop
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        directionalLight.position.set(10, 10, 5);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.setScalar(1024); // Reduced shadow resolution
+        scene.add(directionalLight);
 
-        if (objectId) {
-          setSelectedObject(objectId);
-          return; // Don't start camera drag if object selected
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        fillLight.position.set(-5, 5, -5);
+        scene.add(fillLight);
+      } else {
+        // Simple directional light for mobile
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+      }
+
+      // Add grid with mobile optimization
+      const gridHelper = new THREE.GridHelper(
+        isMobile ? 8 : 10,
+        isMobile ? 8 : 10,
+        0x888888,
+        0x444444
+      );
+      gridHelper.name = 'grid';
+      scene.add(gridHelper);
+
+      // Add simplified axes helper
+      const axesHelper = new THREE.AxesHelper(isMobile ? 3 : 5);
+      axesHelper.name = 'axes';
+      scene.add(axesHelper);
+
+      // Append to mount
+      mount.appendChild(renderer.domElement);
+
+      // Simplified interaction handling
+      let isDragging = false;
+      let isMultiTouch = false;
+      let initialPinchDistance = 0;
+      let previousPosition = { x: 0, y: 0 };
+      let lastTouchTime = 0;
+
+      const getEventPosition = (event: MouseEvent | TouchEvent) => {
+        if ('touches' in event) {
+          return event.touches.length > 0 ? {
+            x: event.touches[0].clientX,
+            y: event.touches[0].clientY
+          } : { x: 0, y: 0 };
         }
-      }
+        return { x: event.clientX, y: event.clientY };
+      };
 
-      // Start camera drag
-      isDragging = true;
-      previousMousePosition = { x: clientX, y: clientY };
-    };
+      const handleStart = (event: MouseEvent | TouchEvent) => {
+        event.preventDefault();
 
-    const handleMouseMove = (event: MouseEvent | TouchEvent) => {
-      event.preventDefault();
+        if ('touches' in event) {
+          const currentTime = Date.now();
 
-      if ('touches' in event) {
-        if (event.touches.length === 2 && isMultiTouch) {
-          // Handle pinch zoom
-          const touch1 = event.touches[0];
-          const touch2 = event.touches[1];
-          const currentDistance = Math.sqrt(
-            Math.pow(touch2.clientX - touch1.clientX, 2) +
-            Math.pow(touch2.clientY - touch1.clientY, 2)
-          );
+          if (event.touches.length === 2) {
+            // Pinch to zoom
+            isMultiTouch = true;
+            const touch1 = event.touches[0];
+            const touch2 = event.touches[1];
+            initialPinchDistance = Math.sqrt(
+              Math.pow(touch2.clientX - touch1.clientX, 2) +
+              Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+            return;
+          } else if (event.touches.length === 1) {
+            // Single touch
+            const position = getEventPosition(event);
+            previousPosition = position;
+            isDragging = true;
 
-          if (initialPinchDistance > 0) {
-            const scale = currentDistance / initialPinchDistance;
-            const newDistance = cameraDistance / scale;
-            setCameraDistance(Math.max(2, Math.min(50, newDistance)));
+            // Double tap detection for mobile
+            if (currentTime - lastTouchTime < 300) {
+              handleObjectSelection(event);
+              return;
+            }
+            lastTouchTime = currentTime;
           }
-          return;
-        } else if (event.touches.length === 1 && isDragging && !isMultiTouch) {
-          const clientX = event.touches[0].clientX;
-          const clientY = event.touches[0].clientY;
-
-          const deltaX = clientX - previousMousePosition.x;
-          const deltaY = clientY - previousMousePosition.y;
-
-          // Rotate camera around the scene with mobile-friendly sensitivity
-          const spherical = new THREE.Spherical();
-          spherical.setFromVector3(camera.position);
-          spherical.theta -= deltaX * 0.005; // Reduced sensitivity for mobile
-          spherical.phi += deltaY * 0.005;
-          spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
-
-          camera.position.setFromSpherical(spherical);
-          camera.lookAt(0, 0, 0);
-
-          previousMousePosition = { x: clientX, y: clientY };
+        } else {
+          // Mouse
+          const position = getEventPosition(event);
+          previousPosition = position;
+          isDragging = true;
+          handleObjectSelection(event);
         }
-      } else if (isDragging) {
-        // Mouse handling
-        const clientX = event.clientX;
-        const clientY = event.clientY;
+      };
 
-        const deltaX = clientX - previousMousePosition.x;
-        const deltaY = clientY - previousMousePosition.y;
+      const handleMove = (event: MouseEvent | TouchEvent) => {
+        event.preventDefault();
 
-        // Rotate camera around the scene
+        if ('touches' in event) {
+          if (event.touches.length === 2 && isMultiTouch) {
+            // Handle pinch zoom
+            const touch1 = event.touches[0];
+            const touch2 = event.touches[1];
+            const currentDistance = Math.sqrt(
+              Math.pow(touch2.clientX - touch1.clientX, 2) +
+              Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+
+            if (initialPinchDistance > 0) {
+              const scale = currentDistance / initialPinchDistance;
+              const newDistance = cameraDistance / scale;
+              setCameraDistance(Math.max(2, Math.min(50, newDistance)));
+            }
+            return;
+          } else if (event.touches.length === 1 && isDragging && !isMultiTouch) {
+            const position = getEventPosition(event);
+            rotateCameraAround(position);
+          }
+        } else if (isDragging) {
+          const position = getEventPosition(event);
+          rotateCameraAround(position);
+        }
+      };
+
+      const rotateCameraAround = (currentPosition: { x: number; y: number }) => {
+        const deltaX = currentPosition.x - previousPosition.x;
+        const deltaY = currentPosition.y - previousPosition.y;
+
+        if (!camera) return;
+
         const spherical = new THREE.Spherical();
         spherical.setFromVector3(camera.position);
-        spherical.theta -= deltaX * 0.01;
-        spherical.phi += deltaY * 0.01;
+
+        // Mobile-friendly sensitivity - slightly more responsive on mobile
+        const sensitivity = isMobile ? 0.004 : 0.005;
+        spherical.theta -= deltaX * sensitivity;
+        spherical.phi += deltaY * sensitivity;
         spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
 
         camera.position.setFromSpherical(spherical);
         camera.lookAt(0, 0, 0);
 
-        previousMousePosition = { x: clientX, y: clientY };
-      }
-    };
+        previousPosition = currentPosition;
+      };
 
-    const handleMouseUp = (event?: TouchEvent) => {
-      isDragging = false;
-      isMultiTouch = false;
-      initialPinchDistance = 0;
-
-      // Handle touch end properly
-      if (event && 'touches' in event && event.touches.length === 0) {
+      const handleEnd = () => {
         isDragging = false;
         isMultiTouch = false;
-      }
-    };
+        initialPinchDistance = 0;
+      };
 
-    // Add event listeners
-    renderer.domElement.addEventListener('mousedown', handleMouseDown);
-    renderer.domElement.addEventListener('mousemove', handleMouseMove);
-    renderer.domElement.addEventListener('mouseup', handleMouseUp);
-    renderer.domElement.addEventListener('touchstart', handleMouseDown);
-    renderer.domElement.addEventListener('touchmove', handleMouseMove);
-    renderer.domElement.addEventListener('touchend', handleMouseUp);
+      const handleObjectSelection = (event: MouseEvent | TouchEvent) => {
+        if (!camera || !scene) return;
 
-    // Animation loop
-    const animate = () => {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-    };
-    animate();
+        const rect = renderer.domElement.getBoundingClientRect();
+        const position = getEventPosition(event);
 
-    // Handle resize with mobile optimization
-    const handleResize = () => {
-      if (!mount || !renderer || !camera) return;
+        mouseRef.current.x = ((position.x - rect.left) / rect.width) * 2 - 1;
+        mouseRef.current.y = -((position.y - rect.top) / rect.height) * 2 + 1;
 
-      const newWidth = Math.max(mount.clientWidth || 400, 300);
-      const newHeight = Math.max(mount.clientHeight || 300, 200);
+        raycasterRef.current.setFromCamera(mouseRef.current, camera);
+        const intersects = raycasterRef.current.intersectObjects(Array.from(objectsMapRef.current.values()));
 
-      camera.aspect = newWidth / newHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(newWidth, newHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    };
+        if (intersects.length > 0) {
+          const clickedMesh = intersects[0].object as THREE.Mesh;
+          const objectId = Array.from(objectsMapRef.current.entries())
+            .find(([_, mesh]) => mesh === clickedMesh)?.[0];
 
-    window.addEventListener('resize', handleResize);
+          if (objectId) {
+            setSelectedObject(objectId);
+          }
+        } else {
+          setSelectedObject(null);
+        }
+      };
 
-    // Cleanup
-    return () => {
-      renderer.domElement.removeEventListener('mousedown', handleMouseDown);
-      renderer.domElement.removeEventListener('mousemove', handleMouseMove);
-      renderer.domElement.removeEventListener('mouseup', handleMouseUp);
-      renderer.domElement.removeEventListener('touchstart', handleMouseDown);
-      renderer.domElement.removeEventListener('touchmove', handleMouseMove);
-      renderer.domElement.removeEventListener('touchend', handleMouseUp);
-      window.removeEventListener('resize', handleResize);
+      // Add event listeners with better mobile support
+      const canvas = renderer.domElement;
+      canvas.style.touchAction = 'none';
 
-      if (mount && renderer.domElement.parentNode === mount) {
-        renderer.domElement.removeEventListener('wheel', handleWheel);
-        mount.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
-    };
-  }, []);
+      canvas.addEventListener('mousedown', handleStart);
+      canvas.addEventListener('mousemove', handleMove);
+      canvas.addEventListener('mouseup', handleEnd);
+      canvas.addEventListener('touchstart', handleStart, { passive: false });
+      canvas.addEventListener('touchmove', handleMove, { passive: false });
+      canvas.addEventListener('touchend', handleEnd);
+
+      // Mouse wheel zoom
+      const handleWheel = (event: WheelEvent) => {
+        event.preventDefault();
+        const delta = event.deltaY > 0 ? 1.1 : 0.9;
+        setCameraDistance(prev => Math.max(2, Math.min(50, prev * delta)));
+      };
+      canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+      // Animation loop with mobile optimization
+      const animate = () => {
+        if (!renderer || !scene || !camera || !sceneReady) {
+          animationFrameRef.current = requestAnimationFrame(animate);
+          return;
+        }
+
+        frameCountRef.current++;
+
+        try {
+          // Throttle rendering on mobile (30 FPS vs 60 FPS)
+          if (isMobile) {
+            // Render every other frame for 30 FPS on mobile
+            if (frameCountRef.current % 2 === 0) {
+              renderer.render(scene, camera);
+            }
+          } else {
+            renderer.render(scene, camera);
+          }
+        } catch (error) {
+          console.error('Render error:', error);
+        }
+
+        animationFrameRef.current = requestAnimationFrame(animate);
+      };
+
+      // Handle resize with debouncing
+      let resizeTimeout: NodeJS.Timeout;
+      const handleResize = () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          if (!mount || !renderer || !camera) return;
+
+          const newWidth = Math.max(mount.clientWidth || 400, 300);
+          const newHeight = Math.max(mount.clientHeight || 300, 200);
+
+          camera.aspect = newWidth / newHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(newWidth, newHeight);
+        }, 150);
+      };
+
+      window.addEventListener('resize', handleResize);
+
+      setSceneReady(true);
+      setIsThreeJSSupported(true);
+      animate();
+
+      // Cleanup function
+      return () => {
+        setSceneReady(false);
+
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+
+        // Reset frame counter
+        frameCountRef.current = 0;
+
+        window.removeEventListener('resize', handleResize);
+
+        if (canvas) {
+          canvas.removeEventListener('mousedown', handleStart);
+          canvas.removeEventListener('mousemove', handleMove);
+          canvas.removeEventListener('mouseup', handleEnd);
+          canvas.removeEventListener('touchstart', handleStart);
+          canvas.removeEventListener('touchmove', handleMove);
+          canvas.removeEventListener('touchend', handleEnd);
+          canvas.removeEventListener('wheel', handleWheel);
+        }
+
+        if (mount && renderer && renderer.domElement.parentNode === mount) {
+          mount.removeChild(renderer.domElement);
+        }
+
+        if (renderer) {
+          renderer.dispose();
+        }
+
+        clearTimeout(resizeTimeout);
+      };
+
+    } catch (error) {
+      console.error('Three.js initialization failed:', error);
+      setIsThreeJSSupported(false);
+    }
+  }, [isMobile, cameraDistance]);
 
   // Update objects when props change
   useEffect(() => {
-    if (!sceneRef.current) return;
+    if (!sceneRef.current || !sceneReady) return;
 
     const scene = sceneRef.current;
     const objectsMap = objectsMapRef.current;
 
-    // Remove objects that no longer exist
-    for (const [id, mesh] of objectsMap) {
-      if (!objects.find(obj => obj.id === id)) {
-        scene.remove(mesh);
-        objectsMap.delete(id);
-      }
-    }
-
-    // Add or update objects
-    objects.forEach(obj => {
-      let mesh = objectsMap.get(obj.id);
-
-      if (!mesh) {
-        // Create new object
-        let geometry: THREE.BufferGeometry;
-
-        switch (obj.type) {
-          case 'cube':
-            geometry = new THREE.BoxGeometry(1, 1, 1);
-            break;
-          case 'sphere':
-            geometry = new THREE.SphereGeometry(0.5, 32, 32);
-            break;
-          case 'cylinder':
-            geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
-            break;
-          case 'plane':
-            geometry = new THREE.PlaneGeometry(1, 1);
-            break;
-          case 'media':
-            geometry = new THREE.PlaneGeometry(2, 1.5); // 16:9 ratio for media
-            break;
-          default:
-            geometry = new THREE.BoxGeometry(1, 1, 1);
+    try {
+      // Remove objects that no longer exist
+      for (const [id, mesh] of objectsMap) {
+        if (!objects.find(obj => obj.id === id)) {
+          scene.remove(mesh);
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) {
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach(mat => mat.dispose());
+            } else {
+              mesh.material.dispose();
+            }
+          }
+          objectsMap.delete(id);
         }
+      }
 
-        const material = new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          metalness: 0.1,
-          roughness: 0.5,
-          transparent: false
-        });
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+      // Add or update objects
+      objects.forEach(obj => {
+        let mesh = objectsMap.get(obj.id);
 
-        // Apply media texture if available
-        if (obj.mediaUrl && obj.mediaType === 'image') {
-          const textureLoader = new THREE.TextureLoader();
-          textureLoader.load(obj.mediaUrl, (texture) => {
-            material.map = texture;
-            material.needsUpdate = true;
+        if (!mesh) {
+          // Create new object with mobile-optimized geometry
+          let geometry: THREE.BufferGeometry;
+
+          const segments = isMobile ? 16 : 32; // Lower detail on mobile
+
+          switch (obj.type) {
+            case 'cube':
+              geometry = new THREE.BoxGeometry(1, 1, 1);
+              break;
+            case 'sphere':
+              geometry = new THREE.SphereGeometry(0.5, segments, segments / 2);
+              break;
+            case 'cylinder':
+              geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, segments);
+              break;
+            case 'plane':
+              geometry = new THREE.PlaneGeometry(1, 1);
+              break;
+            case 'media':
+              geometry = new THREE.PlaneGeometry(2, 1.5);
+              break;
+            default:
+              geometry = new THREE.BoxGeometry(1, 1, 1);
+          }
+
+          // Mobile-optimized material
+          const material = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            metalness: isMobile ? 0 : 0.1, // Simplified materials on mobile
+            roughness: isMobile ? 1 : 0.5,
+            transparent: false
           });
+
+          mesh = new THREE.Mesh(geometry, material);
+
+          if (!isMobile) {
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+          }
+
+          // Apply media texture if available and supported
+          if (obj.mediaUrl && obj.mediaType === 'image' && !isMobile) {
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(
+              obj.mediaUrl,
+              (texture) => {
+                material.map = texture;
+                material.needsUpdate = true;
+              },
+              undefined,
+              (error) => {
+                console.warn('Failed to load texture:', error);
+              }
+            );
+          }
+
+          scene.add(mesh);
+          objectsMap.set(obj.id, mesh);
         }
 
-        scene.add(mesh);
-        objectsMap.set(obj.id, mesh);
-      }
+        // Update object properties
+        if (mesh) {
+          mesh.position.set(...obj.position);
+          mesh.rotation.set(
+            THREE.MathUtils.degToRad(obj.rotation[0]),
+            THREE.MathUtils.degToRad(obj.rotation[1]),
+            THREE.MathUtils.degToRad(obj.rotation[2])
+          );
+          mesh.scale.set(...obj.scale);
+          mesh.visible = obj.visible;
 
-      // Update object properties
-      mesh.position.set(...obj.position);
-      mesh.rotation.set(
-        THREE.MathUtils.degToRad(obj.rotation[0]),
-        THREE.MathUtils.degToRad(obj.rotation[1]),
-        THREE.MathUtils.degToRad(obj.rotation[2])
-      );
-      mesh.scale.set(...obj.scale);
-      mesh.visible = obj.visible;
+          // Update material
+          const material = mesh.material as THREE.MeshStandardMaterial;
+          if (obj.color) {
+            material.color.setHex(parseInt(obj.color.replace('#', ''), 16));
+          }
 
-      // Update material
-      const material = mesh.material as THREE.MeshStandardMaterial;
-      if (obj.color) {
-        material.color.setHex(parseInt(obj.color.replace('#', ''), 16));
-      }
-      material.metalness = obj.metallic || 0;
-      material.roughness = obj.roughness || 1;
+          if (!isMobile) {
+            material.metalness = obj.metallic || 0;
+            material.roughness = obj.roughness || 1;
+          }
 
-      // Highlight selected object
-      if (obj.id === selectedObject) {
-        material.emissive.setHex(0x444444);
-        material.emissiveIntensity = 0.3;
-      } else {
-        material.emissive.setHex(0x000000);
-        material.emissiveIntensity = 0;
-      }
-    });
-  }, [objects, selectedObject]);
+          // Highlight selected object
+          if (obj.id === selectedObject) {
+            material.emissive.setHex(0x444444);
+            material.emissiveIntensity = 0.3;
+          } else {
+            material.emissive.setHex(0x000000);
+            material.emissiveIntensity = 0;
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error updating objects:', error);
+    }
+  }, [objects, selectedObject, isMobile, sceneReady]);
 
   // Toggle grid visibility
   useEffect(() => {
@@ -413,19 +553,6 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
     if (axes) axes.visible = showGrid;
   }, [showGrid]);
 
-  // Enhanced zoom functions with smoother controls
-  const zoomIn = () => {
-    setCameraDistance(prev => Math.max(prev * 0.9, 1));
-  };
-
-  const zoomOut = () => {
-    setCameraDistance(prev => Math.min(prev * 1.1, 100));
-  };
-
-  const resetCamera = () => {
-    setCameraDistance(8.66); // sqrt(5^2 + 5^2 + 5^2)
-  };
-
   // Update camera position when distance changes
   useEffect(() => {
     if (!cameraRef.current) return;
@@ -435,6 +562,11 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
     camera.position.copy(normalizedPosition.multiplyScalar(cameraDistance));
     camera.lookAt(0, 0, 0);
   }, [cameraDistance]);
+
+  // Simplified control functions
+  const zoomIn = () => setCameraDistance(prev => Math.max(prev * 0.9, 1));
+  const zoomOut = () => setCameraDistance(prev => Math.min(prev * 1.1, 100));
+  const resetCamera = () => setCameraDistance(8.66);
 
   const addObject = (type: string) => {
     const newObject: SceneObject = {
@@ -451,6 +583,24 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
     };
 
     onObjectsChange([...objects, newObject]);
+    setSelectedObject(newObject.id);
+  };
+
+  const updateSelectedObject = (updates: Partial<SceneObject>) => {
+    if (!selectedObject) return;
+
+    const updatedObjects = objects.map(obj =>
+      obj.id === selectedObject ? { ...obj, ...updates } : obj
+    );
+    onObjectsChange(updatedObjects);
+  };
+
+  const deleteSelectedObject = () => {
+    if (!selectedObject) return;
+
+    const updatedObjects = objects.filter(obj => obj.id !== selectedObject);
+    onObjectsChange(updatedObjects);
+    setSelectedObject(null);
   };
 
   const applyMediaToObject = (objectId: string, media: MediaItem) => {
@@ -488,307 +638,249 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
 
   const selectedObj = objects.find(obj => obj.id === selectedObject);
 
+  // Fallback UI for unsupported devices
+  if (!isThreeJSSupported) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center bg-gray-100 text-gray-800 p-8">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🎨</div>
+          <h3 className="text-xl font-semibold mb-2">3D View Not Available</h3>
+          <p className="text-gray-600 mb-4">
+            Your device doesn't support WebGL or 3D rendering.
+            {isMobile && " Try using a different browser or device."}
+          </p>
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <h4 className="font-medium mb-3">Your AR Objects:</h4>
+            {objects.length > 0 ? (
+              <div className="space-y-2">
+                {objects.map(obj => (
+                  <div key={obj.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <span className="text-sm">{obj.name}</span>
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className="w-4 h-4 rounded border"
+                        style={{ backgroundColor: obj.color || '#cccccc' }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onObjectsChange(objects.filter(o => o.id !== obj.id))}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No objects added yet</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col lg:flex-row">
       {/* Main Sandbox */}
-      <div className="flex-1 relative min-h-[400px] lg:min-h-0">
+      <div className="flex-1 relative min-h-[300px] lg:min-h-0">
         <div
           ref={mountRef}
-          className="w-full h-full min-h-[400px] bg-gray-900 rounded-lg overflow-hidden"
+          className="w-full h-full min-h-[300px] bg-gray-900 rounded-lg overflow-hidden"
           style={{ touchAction: 'none' }}
         />
 
-        {/* Toolbar Overlay - Mobile Responsive */}
-        <div className="absolute top-2 left-2 lg:top-4 lg:left-4 bg-gray-900/95 rounded-lg p-1 lg:p-2 flex flex-wrap lg:space-x-2 gap-1 lg:gap-0 max-w-[calc(100%-1rem)] lg:max-w-none">
+        {/* Simplified Mobile Toolbar */}
+        <div className="absolute top-2 left-2 lg:top-4 lg:left-4 bg-gray-900/95 rounded-lg p-2 flex flex-wrap gap-1 max-w-[calc(100%-1rem)]">
           <Button
             size="sm"
             variant={transformMode === 'translate' ? 'default' : 'ghost'}
             onClick={() => setTransformMode('translate')}
-            className="text-white p-2 lg:px-3"
+            className="text-white p-2"
           >
-            <Move3D className="w-3 h-3 lg:w-4 lg:h-4" />
+            <Move3D className="w-4 h-4" />
           </Button>
           <Button
             size="sm"
             variant={transformMode === 'rotate' ? 'default' : 'ghost'}
             onClick={() => setTransformMode('rotate')}
-            className="text-white p-2 lg:px-3"
+            className="text-white p-2"
           >
-            <RotateCcw className="w-3 h-3 lg:w-4 lg:h-4" />
+            <RotateCcw className="w-4 h-4" />
           </Button>
           <Button
             size="sm"
             variant={transformMode === 'scale' ? 'default' : 'ghost'}
             onClick={() => setTransformMode('scale')}
-            className="text-white p-2 lg:px-3"
+            className="text-white p-2"
           >
-            <Scale className="w-3 h-3 lg:w-4 lg:h-4" />
+            <Scale className="w-4 h-4" />
           </Button>
-          <div className="hidden lg:block w-px bg-gray-600 mx-2" />
+          <div className="w-px bg-gray-600 mx-1" />
           <Button
             size="sm"
             variant={showGrid ? 'default' : 'ghost'}
             onClick={() => setShowGrid(!showGrid)}
-            className="text-white p-2 lg:px-3"
+            className="text-white p-2"
           >
-            <Grid3X3 className="w-3 h-3 lg:w-4 lg:h-4" />
+            <Grid3X3 className="w-4 h-4" />
           </Button>
-          <div className="hidden lg:block w-px bg-gray-600 mx-2" />
-          <Button
-            size="sm"
-            onClick={zoomIn}
-            className="text-white bg-gray-700 hover:bg-gray-600 p-2 lg:px-3"
-          >
-            <ZoomIn className="w-3 h-3 lg:w-4 lg:h-4" />
-          </Button>
-          <Button
-            size="sm"
-            onClick={zoomOut}
-            className="text-white bg-gray-700 hover:bg-gray-600 p-2 lg:px-3"
-          >
-            <ZoomOut className="w-3 h-3 lg:w-4 lg:h-4" />
-          </Button>
+
+          {!isMobile && (
+            <>
+              <div className="w-px bg-gray-600 mx-1" />
+              <Button size="sm" onClick={zoomIn} className="text-white bg-gray-700 hover:bg-gray-600 p-2">
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <Button size="sm" onClick={zoomOut} className="text-white bg-gray-700 hover:bg-gray-600 p-2">
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+            </>
+          )}
         </div>
 
-        {/* Object Creation Panel - Mobile Responsive */}
-        <div className="absolute bottom-16 lg:top-4 right-2 lg:right-4 bg-gray-900/95 rounded-lg p-1 lg:p-2">
+        {/* Mobile-Optimized Object Creation Panel */}
+        <div className="absolute bottom-4 right-4 lg:top-4 lg:right-4 bg-gray-900/95 rounded-lg p-2">
           <div className="flex lg:flex-col space-x-1 lg:space-x-0 lg:space-y-2">
-            <Button
-              size="sm"
-              onClick={() => addObject('cube')}
-              className="bg-blue-600 hover:bg-blue-700 text-white p-2 lg:px-3"
-            >
-              <Box className="w-3 h-3 lg:w-4 lg:h-4 lg:mr-1" />
-              <span className="hidden lg:inline">Cube</span>
+            <Button size="sm" onClick={() => addObject('cube')} className="bg-blue-600 hover:bg-blue-700 text-white p-2">
+              <Box className="w-4 h-4" />
             </Button>
-            <Button
-              size="sm"
-              onClick={() => addObject('sphere')}
-              className="bg-green-600 hover:bg-green-700 text-white p-2 lg:px-3"
-            >
-              <span className="text-xs lg:text-sm">⚫</span>
-              <span className="hidden lg:inline ml-1">Sphere</span>
+            <Button size="sm" onClick={() => addObject('sphere')} className="bg-green-600 hover:bg-green-700 text-white p-2">
+              <span className="text-sm">⚫</span>
             </Button>
-            <Button
-              size="sm"
-              onClick={() => addObject('cylinder')}
-              className="bg-purple-600 hover:bg-purple-700 text-white p-2 lg:px-3"
-            >
-              <span className="text-xs lg:text-sm">🟦</span>
-              <span className="hidden lg:inline ml-1">Cylinder</span>
+            <Button size="sm" onClick={() => addObject('cylinder')} className="bg-purple-600 hover:bg-purple-700 text-white p-2">
+              <span className="text-sm">🟦</span>
             </Button>
-            <Button
-              size="sm"
-              onClick={() => addObject('plane')}
-              className="bg-orange-600 hover:bg-orange-700 text-white p-2 lg:px-3"
-            >
-              <span className="text-xs lg:text-sm">⬜</span>
-              <span className="hidden lg:inline ml-1">Plane</span>
+            <Button size="sm" onClick={() => addObject('plane')} className="bg-orange-600 hover:bg-orange-700 text-white p-2">
+              <span className="text-sm">⬜</span>
             </Button>
-            <div className="hidden lg:block w-full h-px bg-gray-600 my-1" />
-            <Button
-              size="sm"
-              onClick={() => setShowMediaPanel(true)}
-              className="bg-pink-600 hover:bg-pink-700 text-white p-2 lg:px-3"
-            >
-              <Upload className="w-3 h-3 lg:w-4 lg:h-4 lg:mr-1" />
-              <span className="hidden lg:inline">Media</span>
-            </Button>
+            {!isMobile && (
+              <>
+                <div className="hidden lg:block w-full h-px bg-gray-600 my-1" />
+                <Button size="sm" onClick={() => setShowMediaPanel(true)} className="bg-pink-600 hover:bg-pink-700 text-white p-2">
+                  <Upload className="w-4 h-4" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Status Bar - Mobile Responsive */}
-        <div className="absolute bottom-2 left-2 lg:bottom-4 lg:left-4 bg-gray-900/95 rounded-lg px-2 py-1 lg:px-4 lg:py-2 text-white text-xs lg:text-sm max-w-[60%] lg:max-w-none truncate">
-          {selectedObj ? `Selected: ${selectedObj.name}` : `${objects.length} objects in scene`}
+        {/* Status Bar */}
+        <div className="absolute bottom-2 left-2 lg:bottom-4 lg:left-4 bg-gray-900/95 rounded-lg px-3 py-2 text-white text-sm max-w-[60%] truncate">
+          {selectedObj ? `Selected: ${selectedObj.name}` : `${objects.length} objects • ${isMobile ? 'Mobile' : 'Desktop'} mode`}
         </div>
+
+        {/* Mobile Help Overlay */}
+        {isMobile && objects.length === 0 && (
+          <div className="absolute inset-4 flex items-center justify-center">
+            <div className="bg-blue-600/90 text-white px-4 py-3 rounded-lg text-center max-w-xs">
+              <p className="text-sm font-medium mb-2">Welcome to AR Sandbox!</p>
+              <p className="text-xs opacity-90">
+                Tap the + buttons to add objects • Pinch to zoom • Drag to rotate
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Properties Panel - Mobile Responsive */}
+      {/* Properties Panel - Simplified for mobile */}
       {selectedObj && (
-        <div className="lg:w-80 lg:relative absolute bottom-0 left-0 right-0 lg:bottom-auto lg:left-auto lg:right-auto bg-gray-900 text-white p-4 overflow-y-auto max-h-[50vh] lg:max-h-none rounded-t-lg lg:rounded-none">
+        <div className="lg:w-80 absolute bottom-0 left-0 right-0 lg:relative lg:bottom-auto bg-white text-gray-900 p-4 rounded-t-lg lg:rounded-none shadow-lg lg:shadow-none max-h-[50vh] lg:max-h-none overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Object Properties</h3>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setSelectedObject(null)}
-              className="lg:hidden text-white"
-            >
-              ✕
-            </Button>
+            <h3 className="text-lg font-semibold">Properties: {selectedObj.name}</h3>
+            <div className="flex items-center space-x-2">
+              <Button size="sm" variant="ghost" onClick={() => setSelectedObject(null)} className="lg:hidden">
+                ✕
+              </Button>
+              <Button size="sm" variant="ghost" onClick={deleteSelectedObject} className="text-red-500 hover:text-red-700">
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
+          {/* Simplified Controls for Mobile */}
           <div className="space-y-4">
+            {/* Color */}
             <div>
-              <label className="block text-sm font-medium mb-1">Name</label>
-              <input
-                type="text"
-                value={selectedObj.name}
-                onChange={(e) => {
-                  const updated = objects.map(obj =>
-                    obj.id === selectedObject ? { ...obj, name: e.target.value } : obj
-                  );
-                  onObjectsChange(updated);
-                }}
-                className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Position</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['X', 'Y', 'Z'].map((axis, i) => (
-                  <input
-                    key={axis}
-                    type="number"
-                    step="0.1"
-                    value={selectedObj.position[i]}
-                    onChange={(e) => {
-                      const newPos = [...selectedObj.position] as [number, number, number];
-                      newPos[i] = parseFloat(e.target.value);
-                      const updated = objects.map(obj =>
-                        obj.id === selectedObject ? { ...obj, position: newPos } : obj
-                      );
-                      onObjectsChange(updated);
-                    }}
-                    className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm"
-                    placeholder={axis}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Rotation</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['X', 'Y', 'Z'].map((axis, i) => (
-                  <input
-                    key={axis}
-                    type="number"
-                    step="1"
-                    value={selectedObj.rotation[i]}
-                    onChange={(e) => {
-                      const newRot = [...selectedObj.rotation] as [number, number, number];
-                      newRot[i] = parseFloat(e.target.value);
-                      const updated = objects.map(obj =>
-                        obj.id === selectedObject ? { ...obj, rotation: newRot } : obj
-                      );
-                      onObjectsChange(updated);
-                    }}
-                    className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm"
-                    placeholder={axis}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Scale</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['X', 'Y', 'Z'].map((axis, i) => (
-                  <input
-                    key={axis}
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    value={selectedObj.scale[i]}
-                    onChange={(e) => {
-                      const newScale = [...selectedObj.scale] as [number, number, number];
-                      newScale[i] = Math.max(0.1, parseFloat(e.target.value));
-                      const updated = objects.map(obj =>
-                        obj.id === selectedObject ? { ...obj, scale: newScale } : obj
-                      );
-                      onObjectsChange(updated);
-                    }}
-                    className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm"
-                    placeholder={axis}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Color</label>
+              <label className="block text-sm font-medium mb-2">Color</label>
               <input
                 type="color"
                 value={selectedObj.color || '#ffffff'}
-                onChange={(e) => {
-                  const updated = objects.map(obj =>
-                    obj.id === selectedObject ? { ...obj, color: e.target.value } : obj
-                  );
-                  onObjectsChange(updated);
-                }}
-                className="w-full h-10 bg-gray-800 border border-gray-600 rounded"
+                onChange={(e) => updateSelectedObject({ color: e.target.value })}
+                className="w-full h-10 rounded border"
               />
             </div>
 
-            {selectedObj.mediaUrl && (
-              <div>
-                <label className="block text-sm font-medium mb-1">Applied Media</label>
-                <div className="bg-gray-800 border border-gray-600 rounded p-2">
-                  <p className="text-sm">{selectedObj.mediaType}: {selectedObj.name}</p>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      const updated = objects.map(obj =>
-                        obj.id === selectedObject ? { ...obj, mediaUrl: undefined, mediaType: undefined } : obj
-                      );
-                      onObjectsChange(updated);
-                    }}
-                    className="mt-2 text-red-400 hover:text-red-300"
-                  >
-                    Remove Media
-                  </Button>
-                </div>
+            {/* Position - Simplified for mobile */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Position</label>
+              <div className="grid grid-cols-3 gap-2">
+                {['X', 'Y', 'Z'].map((axis, i) => (
+                  <div key={axis} className="text-center">
+                    <label className="text-xs text-gray-600">{axis}</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={selectedObj.position[i].toFixed(1)}
+                      onChange={(e) => {
+                        const newPos = [...selectedObj.position] as [number, number, number];
+                        newPos[i] = parseFloat(e.target.value) || 0;
+                        updateSelectedObject({ position: newPos });
+                      }}
+                      className="w-full mt-1 px-2 py-1 border rounded text-sm"
+                    />
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
 
-            <div className="flex space-x-2">
+            {/* Scale - Uniform only for mobile */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Scale</label>
+              <input
+                type="range"
+                min="0.1"
+                max="3"
+                step="0.1"
+                value={selectedObj.scale[0]}
+                onChange={(e) => {
+                  const scale = parseFloat(e.target.value);
+                  updateSelectedObject({ scale: [scale, scale, scale] });
+                }}
+                className="w-full"
+              />
+              <div className="text-center text-xs text-gray-600 mt-1">
+                {(selectedObj.scale[0] * 100).toFixed(0)}%
+              </div>
+            </div>
+
+            {/* Visibility Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Visible</span>
               <Button
                 size="sm"
-                variant="ghost"
-                onClick={() => {
-                  const updated = objects.map(obj =>
-                    obj.id === selectedObject ? { ...obj, visible: !obj.visible } : obj
-                  );
-                  onObjectsChange(updated);
-                }}
-                className="flex-1"
+                variant="outline"
+                onClick={() => updateSelectedObject({ visible: !selectedObj.visible })}
+                className="flex items-center space-x-2"
               >
-                {selectedObj.visible ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-                {selectedObj.visible ? 'Hide' : 'Show'}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  const updated = objects.filter(obj => obj.id !== selectedObject);
-                  onObjectsChange(updated);
-                  setSelectedObject(null);
-                }}
-                className="text-red-400 hover:text-red-300"
-              >
-                <Trash2 className="w-4 h-4" />
+                {selectedObj.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                <span>{selectedObj.visible ? 'Visible' : 'Hidden'}</span>
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Media Panel */}
+      {/* Media Panel - Simplified */}
       {showMediaPanel && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[80vh] overflow-hidden">
             <div className="bg-gradient-to-r from-pink-600 to-purple-600 text-white p-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold">Apply Media to AR</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowMediaPanel(false)}
-                  className="text-white hover:bg-white/20"
-                >
+                <h3 className="text-lg font-bold">Media Library</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowMediaPanel(false)} className="text-white hover:bg-white/20">
                   ✕
                 </Button>
               </div>
@@ -799,43 +891,32 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
                 <h4 className="font-semibold">Available Media</h4>
                 <Button onClick={onMediaUpload} size="sm">
                   <Upload className="w-4 h-4 mr-2" />
-                  Upload More
+                  Upload
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 max-h-60 overflow-y-auto">
+              <div className="space-y-3 max-h-60 overflow-y-auto">
                 {availableMedia.map(media => (
                   <div key={media.id} className="border rounded-lg p-3">
-                    <div className="flex items-center mb-2">
-                      {media.type === 'image' && <Image className="w-5 h-5 mr-2" />}
-                      {media.type === 'video' && <Video className="w-5 h-5 mr-2" />}
-                      {media.type === '3d-model' && <Box className="w-5 h-5 mr-2" />}
-                      <span className="font-medium text-sm">{media.name}</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        {media.type === 'image' && <Image className="w-4 h-4" />}
+                        {media.type === 'video' && <Video className="w-4 h-4" />}
+                        {media.type === '3d-model' && <Box className="w-4 h-4" />}
+                        <span className="font-medium text-sm truncate">{media.name}</span>
+                      </div>
                     </div>
 
                     {media.type === 'image' && (
-                      <img
-                        src={media.url}
-                        alt={media.name}
-                        className="w-full h-20 object-cover rounded mb-2"
-                      />
+                      <img src={media.url} alt={media.name} className="w-full h-16 object-cover rounded mb-2" />
                     )}
 
-                    <div className="flex space-x-1">
-                      <Button
-                        size="sm"
-                        onClick={() => createMediaObject(media)}
-                        className="flex-1"
-                      >
+                    <div className="flex space-x-2">
+                      <Button size="sm" onClick={() => createMediaObject(media)} className="flex-1">
                         Add as Object
                       </Button>
                       {selectedObj && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => applyMediaToObject(selectedObject!, media)}
-                          className="flex-1"
-                        >
+                        <Button size="sm" variant="outline" onClick={() => applyMediaToObject(selectedObject!, media)} className="flex-1">
                           Apply to Selected
                         </Button>
                       )}
@@ -848,9 +929,7 @@ export function ARSandbox({ objects, onObjectsChange, availableMedia, onMediaUpl
                 <div className="text-center py-8 text-gray-500">
                   <Upload className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p>No media uploaded yet</p>
-                  <Button onClick={onMediaUpload} className="mt-2">
-                    Upload Media
-                  </Button>
+                  <Button onClick={onMediaUpload} className="mt-2">Upload Media</Button>
                 </div>
               )}
             </div>
