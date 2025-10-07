@@ -654,8 +654,8 @@ export function MobileOptimizedStudio({ selectedObjectId }: MobileOptimizedStudi
                 metallic: obj.metallic,
                 roughness: obj.roughness,
                 visible: true,
-                mediaUrl: obj.mediaUrl,
-                mediaType: obj.mediaType
+                mediaUrl: (obj as any).mediaUrl,
+                mediaType: (obj as any).mediaType
               });
             });
 

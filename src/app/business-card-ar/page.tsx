@@ -994,8 +994,8 @@ export default function BusinessCardARPage() {
               <div
                 className="relative bg-black/10 rounded-lg overflow-hidden h-[400px]"
                 onMouseEnter={() => {
-                  if (!isARActive) {
-                    setIsARActive(true);
+                  if (!arSession.isActive) {
+                    updateSession({ isActive: true });
                     trackEvent('ar_start', { mode: previewMode, object: selectedObject?.name });
                   }
                 }}
