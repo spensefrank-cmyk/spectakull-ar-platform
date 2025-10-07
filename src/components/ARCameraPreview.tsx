@@ -15,6 +15,7 @@ interface SceneObject {
   color?: string;
   metallic?: number;
   roughness?: number;
+  visible: boolean;
 }
 
 interface ARCameraPreviewProps {
